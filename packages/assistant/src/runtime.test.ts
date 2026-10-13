@@ -142,6 +142,24 @@ describe("assistant runtime", () => {
     expect(provider.requests).toHaveLength(1);
   });
 
+  it("rejects reuse of an idempotency key with different assistant input", async () => {
+    const { runtime } = fixture([{ text: "first reply", toolCalls: [] }]);
+    const context = {
+      correlationId: "corr-runtime-0007",
+      actor: "user",
+      idempotencyKey: "turn-runtime-0007"
+    };
+
+    const first = await runtime.runTurn({ text: "first input" }, context);
+    expect(first.status).toBe("completed");
+    if (first.status !== "completed") return;
+
+    await expect(runtime.runTurn(
+      { text: "different input", sessionId: first.sessionId },
+      context
+    )).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+
   it("rejects malformed provider output before tool execution", async () => {
     const { runtime, audit } = fixture([
       { toolCalls: [{ id: "", name: "system.time", arguments: {} }] }
