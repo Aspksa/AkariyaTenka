@@ -2,7 +2,7 @@ import "./styles.css";
 import { getHealth } from "./api/health.js";
 import { createHomeView } from "./pages/home.js";
 import { FrameBatcher } from "./runtime/frame-batcher.js";
-import { HealthStore } from "./state/health.js";
+import { HealthStore, type HealthState } from "./state/health.js";
 
 const root = document.querySelector<HTMLDivElement>("#app");
 if (!root) throw new Error("Missing #app root");
@@ -11,7 +11,7 @@ const store = new HealthStore();
 const view = createHomeView();
 root.replaceChildren(view.element);
 
-const updates = new FrameBatcher((state) => view.update(state));
+const updates = new FrameBatcher<HealthState>((state) => view.update(state));
 store.subscribe((state) => updates.push(state));
 view.update(store.get());
 
