@@ -96,6 +96,33 @@ describe("HTTP skeleton", () => {
     expect(shutdowns).toBe(1);
   });
 
+  it("serves local performance metrics without secrets", async () => {
+    const webDist = await webFixture();
+    const server = createHttpApplication(
+      config(webDist),
+      {
+        health: async () => "{}",
+        performance: async (context) => JSON.stringify({
+          timestamp: "2026-10-14T00:00:00.000Z",
+          correlationId: context.correlationId,
+          uptimeMs: 1,
+          memory: { rssBytes: 1, heapUsedBytes: 1, heapTotalBytes: 1 },
+          eventLoop: { meanMs: 0, p95Ms: 0, maxMs: 0 },
+          metrics: {}
+        })
+      },
+      new Logger("test", "silent")
+    );
+    const port = await listen(server);
+    const response = await fetch("http://127.0.0.1:" + port + "/api/performance", {
+      headers: { "x-correlation-id": "corr-performance-1234" }
+    });
+    const body = await response.json() as { correlationId?: string; memory?: { rssBytes?: number } };
+    expect(response.status).toBe(200);
+    expect(body.correlationId).toBe("corr-performance-1234");
+    expect(body.memory?.rssBytes).toBe(1);
+  });
+
   it("reports recoverable storage failures as degraded health", async () => {
     const webDist = await webFixture();
     class Healthy extends LifecycleAdapter {
