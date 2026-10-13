@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { lstat, realpath, stat } from "node:fs/promises";
+import { lstat, realpath } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { AppError } from "@akariya/core";
