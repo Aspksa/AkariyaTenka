@@ -10,6 +10,7 @@ import type { AppConfig } from "./config.js";
 
 export interface HttpRouteSet {
   readonly health: (context: RequestContext) => Promise<string>;
+  readonly performance?: (context: RequestContext) => Promise<string>;
   readonly supervisorShutdown?: () => Promise<void>;
 }
 
@@ -99,6 +100,11 @@ export function createHttpApplication(
           if (request.method === "GET" && url.pathname === "/api/health") {
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
             response.end(await routes.health(context));
+            return;
+          }
+          if (request.method === "GET" && url.pathname === "/api/performance" && routes.performance !== undefined) {
+            response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+            response.end(await routes.performance(context));
             return;
           }
           if (url.pathname.startsWith("/api/")) {
