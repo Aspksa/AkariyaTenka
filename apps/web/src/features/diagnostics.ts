@@ -1,4 +1,4 @@
-import { getPerformance } from "../api/client.js";
+import { getPerformance } from "../api/performance.js";
 
 function metric(label: string, value: string): HTMLDivElement {
   const row = document.createElement("div");
