@@ -13,14 +13,34 @@ permissions:
   contents: read
 
 jobs:
-  dependency-review:
+  github-dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/dependency-review-action@v4
+      - id: dependency-review
+        continue-on-error: true
+        uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
+      - if: steps.dependency-review.outcome == 'failure'
+        run: echo "::warning::GitHub Dependency Review is unavailable until Dependency Graph is enabled; blocking lockfile review still runs."
+
+  lockfile-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Verify lockfile install
+        run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Verify dependency tree
+        run: npm ls --all
+      - name: Audit all dependencies
+        run: npm audit --audit-level=high
 
   runtime-audit:
     runs-on: ubuntu-latest
