@@ -23,7 +23,7 @@ describe("tool execution", () => {
       name: "read.invalid-output",
       description: "invalid output fixture",
       inputSchema: z.object({}).strict(),
-      outputSchema: z.object({ ok: z.literal(true) }).strict(),
+      outputSchema: z.object({ ok: z.boolean().refine((value) => value, "expected true") }).strict(),
       capabilities: ["read_local"],
       risk: "read",
       execute: async () => ({ ok: false as const })
