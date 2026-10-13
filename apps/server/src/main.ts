@@ -14,11 +14,11 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const clock = new SystemClock();
   const requestContext = new AsyncLocalRequestContextScope();
-  const logger = new Logger("akariya", config.logLevel, undefined, createSecretRedactor(process.env));
+  const logger = new Logger("akariya", config.logLevel, undefined, createSecretRedactor(process.env), clock, requestContext);
   const storage = await createStorage(config);
-  const security = createSecurity(storage.audit, clock);
+  const security = createSecurity(storage.audit, clock, process.env);
   createAssistant(security.policy, security.approvals, storage.audit, clock);
-  const modules = createModules(clock);
+  const modules = createModules(clock, requestContext);
   await modules.kernel.start();
 
   const health = new HealthService(modules.kernel, clock);
