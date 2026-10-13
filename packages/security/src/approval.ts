@@ -19,6 +19,7 @@ export interface ApprovalRequest {
   readonly id: string;
   readonly correlationId: string;
   readonly actor: string;
+  readonly idempotencyKey?: string;
   readonly operation: string;
   readonly capabilities: readonly Capability[];
   readonly risk: Risk;
@@ -53,6 +54,7 @@ export class ApprovalGate {
       id: randomUUID(),
       correlationId: context.correlationId,
       actor: context.actor,
+      ...(context.idempotencyKey === undefined ? {} : { idempotencyKey: context.idempotencyKey }),
       operation,
       capabilities: [...capabilities],
       risk,
@@ -63,6 +65,7 @@ export class ApprovalGate {
 
     await this.audit.emit({
       id: randomUUID(), timestamp: this.clock.now().toISOString(), correlationId: context.correlationId,
+      ...(context.idempotencyKey === undefined ? {} : { idempotencyKey: context.idempotencyKey }),
       actor: context.actor, operation, capabilities, decision: "requested"
     });
     this.pending.set(request.id, { request, state: "pending" });
@@ -100,6 +103,7 @@ export class ApprovalGate {
     const sameCapabilities = [...capabilities].sort().join("\0") === [...request.capabilities].sort().join("\0");
     return request.correlationId === context.correlationId
       && request.actor === context.actor
+      && request.idempotencyKey === context.idempotencyKey
       && request.operation === operation
       && sameCapabilities
       && request.argsDigest === digestArgs(args);
@@ -114,6 +118,7 @@ export class ApprovalGate {
   private async record(request: ApprovalRequest, decision: "approved" | "denied" | "expired"): Promise<void> {
     await this.audit.emit({
       id: randomUUID(), timestamp: this.clock.now().toISOString(), correlationId: request.correlationId,
+      ...(request.idempotencyKey === undefined ? {} : { idempotencyKey: request.idempotencyKey }),
       actor: request.actor, operation: request.operation, capabilities: request.capabilities, decision
     });
   }

@@ -1,4 +1,4 @@
-import { Kernel, LifecycleAdapter } from "@akariya/core";
+import { Kernel, LifecycleAdapter, type Clock, type RequestContextScope } from "@akariya/core";
 import { Scheduler } from "../services/scheduler.js";
 import { NetworkClient } from "../services/network-client.js";
 
@@ -11,10 +11,10 @@ class RuntimeMarker extends LifecycleAdapter {
   }
 }
 
-export function createModules() {
+export function createModules(clock: Clock, requestContext: RequestContextScope) {
   const kernel = new Kernel();
-  const scheduler = new Scheduler();
-  const network = new NetworkClient();
+  const scheduler = new Scheduler(clock);
+  const network = new NetworkClient(requestContext);
   kernel.register({ name: "runtime", service: new RuntimeMarker() });
   kernel.register({ name: "scheduler", dependencies: ["runtime"], service: scheduler });
   return { kernel, scheduler, network };

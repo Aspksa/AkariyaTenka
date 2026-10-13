@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AuditEvent, AuditSink } from "./audit.js";
-import { InMemoryAuditSink, ApprovalGate, SecurePathResolver } from "./index.js";
+import { ApprovalGate, EnvironmentSecretStore, InMemoryAuditSink, SecurePathResolver, createSecretRedactor } from "./index.js";
 
 class ToggleAuditSink implements AuditSink {
   fail = false;
@@ -35,6 +35,21 @@ describe("approval gate", () => {
     expect(await gate.consume(request.id, context, "write", ["write_local"], { value: 1 })).toBe(false);
   });
 
+
+  it("binds approval to the idempotency identity", async () => {
+    const gate = new ApprovalGate(new InMemoryAuditSink(), 60_000);
+    const context = { correlationId: "corr-idempotency", actor: "user", idempotencyKey: "request-12345678" };
+    const request = await gate.request(context, "write", ["write_local"], "write", { value: 1 });
+    await gate.decide(request.id, true);
+    expect(await gate.consume(
+      request.id,
+      { ...context, idempotencyKey: "request-87654321" },
+      "write",
+      ["write_local"],
+      { value: 1 }
+    )).toBe(false);
+  });
+
   it("fails closed when approval audit cannot be persisted", async () => {
     const audit = new ToggleAuditSink();
     const gate = new ApprovalGate(audit, 60_000);
@@ -62,5 +77,26 @@ describe("secure paths", () => {
     catch { return; }
     const resolver = new SecurePathResolver(root);
     await expect(resolver.resolve("safe/link/file.txt")).rejects.toThrow();
+  });
+});
+
+
+describe("secrets", () => {
+  it("reads namespaced environment secrets but refuses mutation", async () => {
+    const store = new EnvironmentSecretStore({ AKARIYA_SECRET_OPENAI_API_KEY: "secret-value" });
+    await expect(store.get("OPENAI_API_KEY")).resolves.toBe("secret-value");
+    await expect(store.set("OPENAI_API_KEY", "other")).rejects.toThrow(/read-only/i);
+    await expect(store.delete("OPENAI_API_KEY")).rejects.toThrow(/read-only/i);
+  });
+
+  it("redacts known secret values even under non-secret field names", () => {
+    const redact = createSecretRedactor({ OPENAI_API_KEY: "super-secret-token" });
+    expect(redact({
+      message: "request failed with super-secret-token",
+      nested: { authorization: "Bearer something" }
+    })).toEqual({
+      message: "request failed with [REDACTED]",
+      nested: { authorization: "[REDACTED]" }
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { EventBus, Kernel, LifecycleAdapter, err, ok } from "./index.js";
+import type { Clock, LogEntry, RequestContext, RequestContextScope } from "./index.js";
+import { EventBus, Kernel, LifecycleAdapter, Logger, err, ok } from "./index.js";
 
 describe("core primitives", () => {
   it("represents success and failure explicitly", () => {
@@ -31,5 +32,36 @@ describe("core primitives", () => {
     await kernel.start();
     await kernel.stop();
     expect(calls).toEqual(["start:db", "start:api", "stop:api", "stop:db"]);
+  });
+
+  it("uses injected clock and active correlation id in log entries", () => {
+    const entries: LogEntry[] = [];
+    const clock: Clock = {
+      now: () => new Date("2026-01-02T03:04:05.000Z"),
+      nowMs: () => Date.parse("2026-01-02T03:04:05.000Z")
+    };
+    let active: RequestContext | undefined;
+    const scope: RequestContextScope = {
+      current: () => active,
+      require: () => {
+        if (active === undefined) throw new Error("missing context");
+        return active;
+      },
+      run: <T>(context: RequestContext, operation: () => T): T => {
+        const previous = active;
+        active = context;
+        try { return operation(); }
+        finally { active = previous; }
+      }
+    };
+    const logger = new Logger("test", "debug", [(entry) => entries.push(entry)], (value) => value, clock, scope);
+    scope.run({ correlationId: "corr-logger12", actor: "test" }, () => logger.info("hello"));
+    expect(entries).toEqual([{
+      level: "info",
+      scope: "test",
+      message: "hello",
+      timestamp: "2026-01-02T03:04:05.000Z",
+      correlationId: "corr-logger12"
+    }]);
   });
 });

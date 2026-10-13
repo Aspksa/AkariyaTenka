@@ -1,4 +1,4 @@
-import { AppError, type RequestContext } from "@akariya/core";
+import { AppError, SystemClock, type Clock, type RequestContext } from "@akariya/core";
 import type { ApprovalGate, AuditSink, Capability, Risk, SecurityPolicy } from "@akariya/security";
 import { randomUUID } from "node:crypto";
 import type { ZodType } from "zod";
@@ -55,7 +55,8 @@ export class ToolExecutor {
     private readonly registry: ToolRegistry,
     private readonly policy: SecurityPolicy,
     private readonly approvals: ApprovalGate,
-    private readonly audit: AuditSink
+    private readonly audit: AuditSink,
+    private readonly clock: Clock = new SystemClock()
   ) {}
 
   async execute(name: string, rawInput: unknown, context: RequestContext, approvalId?: string): Promise<ToolExecutionResult> {
@@ -87,13 +88,15 @@ export class ToolExecutor {
         });
       }
       await this.audit.emit({
-        id: randomUUID(), timestamp: new Date().toISOString(), correlationId: context.correlationId,
+        id: randomUUID(), timestamp: this.clock.now().toISOString(), correlationId: context.correlationId,
+        ...(context.idempotencyKey === undefined ? {} : { idempotencyKey: context.idempotencyKey }),
         actor: context.actor, operation: tool.name, capabilities: tool.capabilities, decision: "executed", result: "success"
       });
       return { status: "completed", value: output.data };
     } catch (error) {
       await this.audit.emit({
-        id: randomUUID(), timestamp: new Date().toISOString(), correlationId: context.correlationId,
+        id: randomUUID(), timestamp: this.clock.now().toISOString(), correlationId: context.correlationId,
+        ...(context.idempotencyKey === undefined ? {} : { idempotencyKey: context.idempotencyKey }),
         actor: context.actor, operation: tool.name, capabilities: tool.capabilities, decision: "failed", result: "failure",
         details: { errorType: error instanceof Error ? error.name : "UnknownError" }
       });

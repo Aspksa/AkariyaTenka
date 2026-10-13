@@ -1,3 +1,6 @@
+import { SystemClock, type Clock } from "./clock.js";
+import type { RequestContextScope } from "./context.js";
+
 export type LogLevel = "debug" | "info" | "warn" | "error" | "silent";
 
 export interface LogEntry {
@@ -18,7 +21,8 @@ const order: Readonly<Record<LogLevel, number>> = {
 
 const consoleSink: LogSink = (entry) => {
   const suffix = entry.data === undefined ? "" : " " + JSON.stringify(entry.data);
-  const line = entry.timestamp + " [" + entry.level + "] [" + entry.scope + "] " + entry.message + suffix;
+  const correlation = entry.correlationId === undefined ? "" : " [" + entry.correlationId + "]";
+  const line = entry.timestamp + " [" + entry.level + "] [" + entry.scope + "]" + correlation + " " + entry.message + suffix;
   if (entry.level === "error") console.error(line);
   else if (entry.level === "warn") console.warn(line);
   else console.log(line);
@@ -29,11 +33,13 @@ export class Logger {
     private readonly scope = "akariya",
     private readonly level: LogLevel = "info",
     private readonly sinks: readonly LogSink[] = [consoleSink],
-    private readonly redact: LogRedactor = (value) => value
+    private readonly redact: LogRedactor = (value) => value,
+    private readonly clock: Clock = new SystemClock(),
+    private readonly requestContext?: RequestContextScope
   ) {}
 
   child(scope: string): Logger {
-    return new Logger(this.scope + ":" + scope, this.level, this.sinks, this.redact);
+    return new Logger(this.scope + ":" + scope, this.level, this.sinks, this.redact, this.clock, this.requestContext);
   }
 
   debug(message: string, data?: unknown): void { this.emit("debug", message, data); }
@@ -43,8 +49,13 @@ export class Logger {
 
   private emit(level: Exclude<LogLevel, "silent">, message: string, data?: unknown): void {
     if (order[level] < order[this.level]) return;
+    const correlationId = this.requestContext?.current()?.correlationId;
     const entry: LogEntry = {
-      level, scope: this.scope, message, timestamp: new Date().toISOString(),
+      level,
+      scope: this.scope,
+      message,
+      timestamp: this.clock.now().toISOString(),
+      ...(correlationId === undefined ? {} : { correlationId }),
       ...(data === undefined ? {} : { data: this.redact(data) })
     };
     for (const sink of this.sinks) {

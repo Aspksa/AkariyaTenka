@@ -42,6 +42,37 @@ describe("tool execution", () => {
     });
   });
 
+
+  it("uses the shared Clock and preserves idempotency in audit", async () => {
+    const audit = new InMemoryAuditSink();
+    const registry = new ToolRegistry();
+    registry.register({
+      name: "read.clock",
+      description: "clock audit fixture",
+      inputSchema: z.object({}).strict(),
+      outputSchema: z.literal("ok"),
+      capabilities: ["read_local"],
+      risk: "read",
+      execute: async () => "ok" as const
+    });
+    const clock = {
+      now: () => new Date("2026-10-14T01:02:03.000Z"),
+      nowMs: () => 1_760_400_123_000
+    };
+    const executor = new ToolExecutor(registry, new DefaultSecurityPolicy(), new ApprovalGate(audit, 60_000, clock), audit, clock);
+    await executor.execute("read.clock", {}, {
+      correlationId: "corr-clock-1234",
+      actor: "user",
+      idempotencyKey: "request-clock123"
+    });
+    expect(audit.list().at(-1)).toMatchObject({
+      timestamp: "2026-10-14T01:02:03.000Z",
+      correlationId: "corr-clock-1234",
+      idempotencyKey: "request-clock123",
+      decision: "executed"
+    });
+  });
+
   it("requires approval for side effects", async () => {
     const audit = new InMemoryAuditSink();
     const approvals = new ApprovalGate(audit);

@@ -6,6 +6,7 @@ export interface AuditEvent {
   readonly id: string;
   readonly timestamp: string;
   readonly correlationId: string;
+  readonly idempotencyKey?: string;
   readonly actor: string;
   readonly operation: string;
   readonly capabilities: readonly Capability[];

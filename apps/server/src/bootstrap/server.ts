@@ -3,12 +3,13 @@ import { stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { AppError, type Logger } from "@akariya/core";
-import { apiErrorSchema, correlationIdSchema } from "@akariya/contracts";
+import { AppError, type Logger, type RequestContext, type RequestContextScope } from "@akariya/core";
+import { apiErrorSchema, correlationIdSchema, idempotencyKeySchema } from "@akariya/contracts";
+import { AsyncLocalRequestContextScope } from "../adapters/request-context-scope.js";
 import type { AppConfig } from "./config.js";
 
 export interface HttpRouteSet {
-  readonly health: (correlationId: string) => Promise<string>;
+  readonly health: (context: RequestContext) => Promise<string>;
 }
 
 const contentTypes: Readonly<Record<string, string>> = {
@@ -27,6 +28,21 @@ function correlationId(request: IncomingMessage): string {
   return candidate && correlationIdSchema.safeParse(candidate).success ? candidate : randomUUID();
 }
 
+function idempotencyKey(request: IncomingMessage, correlationIdValue: string): string | undefined {
+  const value = request.headers["idempotency-key"];
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (candidate === undefined) return undefined;
+  const parsed = idempotencyKeySchema.safeParse(candidate);
+  if (!parsed.success) {
+    throw new AppError({
+      code: "VALIDATION",
+      message: "Invalid Idempotency-Key header",
+      correlationId: correlationIdValue
+    });
+  }
+  return parsed.data;
+}
+
 function statusFor(error: AppError): number {
   switch (error.code) {
     case "VALIDATION": return 400;
@@ -40,40 +56,54 @@ function statusFor(error: AppError): number {
   }
 }
 
-export function createHttpApplication(config: AppConfig, routes: HttpRouteSet, logger: Logger) {
+export function createHttpApplication(
+  config: AppConfig,
+  routes: HttpRouteSet,
+  logger: Logger,
+  requestContext: RequestContextScope = new AsyncLocalRequestContextScope()
+) {
   return createServer(async (request, response) => {
     const id = correlationId(request);
+    const baseContext: RequestContext = { correlationId: id, actor: "local-user" };
     response.setHeader("x-correlation-id", id);
-    try {
-      const url = new URL(request.url ?? "/", "http://" + (request.headers.host ?? "localhost"));
-      if (request.method === "GET" && url.pathname === "/api/health") {
-        response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-        response.end(await routes.health(id));
-        return;
-      }
-      if (url.pathname.startsWith("/api/")) {
-        throw new AppError({ code: "NOT_FOUND", message: "API route not found", correlationId: id });
-      }
-      await serveWeb(config.webDist, url.pathname, response);
-    } catch (error) {
-      const appError = error instanceof AppError
-        ? error
-        : new AppError({ code: "INTERNAL", message: "Internal server error", correlationId: id, cause: error });
-      logger.error("request failed", {
-        correlationId: id,
-        code: appError.code,
-        cause: appError.cause instanceof Error ? appError.cause.message : appError.cause
-      });
-      const payload = apiErrorSchema.parse({
-        error: {
+
+    await requestContext.run(baseContext, async () => {
+      try {
+        const key = idempotencyKey(request, id);
+        const context: RequestContext = key === undefined ? baseContext : { ...baseContext, idempotencyKey: key };
+
+        await requestContext.run(context, async () => {
+          const url = new URL(request.url ?? "/", "http://" + (request.headers.host ?? "localhost"));
+          if (request.method === "GET" && url.pathname === "/api/health") {
+            response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+            response.end(await routes.health(context));
+            return;
+          }
+          if (url.pathname.startsWith("/api/")) {
+            throw new AppError({ code: "NOT_FOUND", message: "API route not found", correlationId: id });
+          }
+          await serveWeb(config.webDist, url.pathname, response);
+        });
+      } catch (error) {
+        const appError = error instanceof AppError
+          ? error
+          : new AppError({ code: "INTERNAL", message: "Internal server error", correlationId: id, cause: error });
+        logger.error("request failed", {
+          correlationId: id,
           code: appError.code,
-          message: appError.code === "INTERNAL" ? "Internal server error" : appError.message,
-          correlationId: id
-        }
-      });
-      response.writeHead(statusFor(appError), { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-      response.end(JSON.stringify(payload));
-    }
+          cause: appError.cause instanceof Error ? appError.cause.message : appError.cause
+        });
+        const payload = apiErrorSchema.parse({
+          error: {
+            code: appError.code,
+            message: appError.code === "INTERNAL" ? "Internal server error" : appError.message,
+            correlationId: id
+          }
+        });
+        response.writeHead(statusFor(appError), { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+        response.end(JSON.stringify(payload));
+      }
+    });
   });
 }
 
