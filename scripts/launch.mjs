@@ -1,11 +1,13 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { performance } from "node:perf_hooks";
 import { applyPreparedUpdate, applyRollbackRequest, confirmUpdate, rollbackFailedStart } from "./apply-update.mjs";
 import { inspectWorkspaceLinks } from "./workspace-health.mjs";
+import { verifyPrebuilt } from "./prebuilt.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(script), "..");
@@ -13,7 +15,12 @@ const RESTART_CODE = 75;
 const STARTUP_TIMEOUT_MS = 30_000;
 const READY_POLL_MS = 300;
 const MAX_PORT_ATTEMPTS = 100;
+const GRACEFUL_CHILD_TIMEOUT_MS = 5_000;
+const CRASH_WINDOW_MS = 60_000;
+const MAX_CRASH_RESTARTS = 3;
 const children = new Map();
+const supervisorToken = randomBytes(32).toString("hex");
+const launcherStartedAt = performance.now();
 let ending = false;
 let serverReady = false;
 let updateApplied = false;
@@ -73,20 +80,65 @@ function killProcessTree(child) {
   }
 }
 
-function killChildren() {
-  for (const child of children.keys()) killProcessTree(child);
+function childFor(label) {
+  for (const [child, childLabel] of children.entries()) {
+    if (childLabel === label) return child;
+  }
+  return undefined;
+}
+
+function waitForChildExit(child, timeoutMs) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      child.removeListener("exit", onExit);
+      resolve(false);
+    }, timeoutMs);
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    child.once("exit", onExit);
+  });
+}
+
+async function requestBackendShutdown() {
+  if (!currentPort) return false;
+  try {
+    const response = await fetch(`http://127.0.0.1:${currentPort}/api/_supervisor/shutdown`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${supervisorToken}` },
+      signal: AbortSignal.timeout(1_500)
+    });
+    return response.status === 202 || response.status === 204;
+  } catch {
+    return false;
+  }
+}
+
+async function stopChildrenGracefully() {
+  const backend = childFor("backend");
+  if (backend) {
+    await requestBackendShutdown();
+    const exited = await waitForChildExit(backend, GRACEFUL_CHILD_TIMEOUT_MS);
+    if (!exited) killProcessTree(backend);
+  }
+
+  for (const [child, label] of [...children.entries()]) {
+    if (label !== "backend") killProcessTree(child);
+  }
   children.clear();
 }
 
-function finish(code = 0) {
+async function finish(code = 0) {
   if (ending) return;
   ending = true;
-  killChildren();
+  await stopChildrenGracefully();
   process.exit(code);
 }
 
-process.once("SIGINT", () => finish(0));
-process.once("SIGTERM", () => finish(0));
+process.once("SIGINT", () => { void finish(0); });
+process.once("SIGTERM", () => { void finish(0); });
 
 function controlledNpmCommand(npmArgs) {
   if (process.platform === "win32") {
