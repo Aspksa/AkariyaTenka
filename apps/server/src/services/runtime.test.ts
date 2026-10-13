@@ -100,6 +100,29 @@ describe("NetworkClient", () => {
       await fixture.close();
     }
   });
+
+  it("normalizes final HTTP 429 and preserves the active correlation id", async () => {
+    const fixture = await httpFixture((_request, response) => {
+      response.writeHead(429, { "retry-after": "2" });
+      response.end("slow down");
+    });
+    const context = { correlationId: "corr-rate-12345", actor: "local-user" };
+    const scope = {
+      current: () => context,
+      require: () => context,
+      run: <T>(_context: typeof context, operation: () => T): T => operation()
+    };
+    try {
+      await expect(new NetworkClient(scope).fetch(fixture.url, {}, { retries: 0 }))
+        .rejects.toMatchObject({
+          code: "RATE_LIMIT",
+          correlationId: "corr-rate-12345",
+          details: { retryAfter: "2" }
+        });
+    } finally {
+      await fixture.close();
+    }
+  });
 });
 
 describe("Scheduler", () => {
