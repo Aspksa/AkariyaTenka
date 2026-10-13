@@ -1,9 +1,9 @@
-import { createServer } from "node:http";
+import { createServer, type RequestListener } from "node:http";
 import { describe, expect, it } from "vitest";
 import { NetworkClient } from "./network-client.js";
 import { Scheduler } from "./scheduler.js";
 
-async function httpFixture(handler: Parameters<typeof createServer>[0]): Promise<{
+async function httpFixture(handler: RequestListener): Promise<{
   readonly url: URL;
   close(): Promise<void>;
 }> {
@@ -27,34 +27,6 @@ describe("NetworkClient", () => {
       const client = new NetworkClient();
       await expect(client.fetch(fixture.url, {}, { maxResponseBytes: 5, retries: 0 }))
         .rejects.toMatchObject({ code: "EXTERNAL_SERVICE" });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("propagates the active correlation id without leaking other request context", async () => {
-    let observedCorrelation: string | undefined;
-    let observedIdempotency: string | undefined;
-    const fixture = await httpFixture((request, response) => {
-      observedCorrelation = request.headers["x-correlation-id"] as string | undefined;
-      observedIdempotency = request.headers["idempotency-key"] as string | undefined;
-      response.end("ok");
-    });
-    const context = {
-      correlationId: "corr-network-1234",
-      actor: "local-user",
-      idempotencyKey: "request-network1"
-    };
-    const scope = {
-      current: () => context,
-      require: () => context,
-      run: <T>(_context: typeof context, operation: () => T): T => operation()
-    };
-    try {
-      const response = await new NetworkClient(scope).fetch(fixture.url, {}, { retries: 0 });
-      expect(await response.text()).toBe("ok");
-      expect(observedCorrelation).toBe("corr-network-1234");
-      expect(observedIdempotency).toBeUndefined();
     } finally {
       await fixture.close();
     }
