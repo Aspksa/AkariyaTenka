@@ -21,7 +21,7 @@ if exist "%NODE_DIR%\node.exe" (
   if not errorlevel 1 goto have_node
 )
 
-echo Node.js 20+ not found. Downloading portable runtime...
+echo Required Node.js runtime not found. Downloading portable runtime...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%\scripts\bootstrap-node.ps1" -Dest "%RUNTIME%"
 if errorlevel 1 goto node_error
 
@@ -44,7 +44,7 @@ pause
 exit /b 1
 
 :node_error
-echo [ERROR] Node.js bootstrap failed. Check the network connection or install Node.js 20+.
+echo [ERROR] Node.js bootstrap failed. Check the network connection or install the required Node.js runtime.
 pause
 exit /b 1
 
@@ -55,5 +55,5 @@ pause
 exit /b %RC%
 
 :check_runtime
-node -e "process.exit(Number(process.versions.node.split('.')[0])>=20?0:1)" >nul 2>&1
+node -e "const fs=require('fs');let min=20;try{const m=JSON.parse(fs.readFileSync('.akariya-build.json','utf8'));if(Number.isInteger(m.nodeMajorMin))min=Math.max(min,m.nodeMajorMin)}catch{}process.exit(Number(process.versions.node.split('.')[0])>=min?0:1)" >nul 2>&1
 exit /b %ERRORLEVEL%
