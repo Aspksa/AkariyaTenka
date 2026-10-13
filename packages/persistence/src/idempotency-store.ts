@@ -24,7 +24,21 @@ export interface IdempotencyRetentionOptions {
 export interface IdempotencyProbe {
   readonly status: "ok" | "degraded";
   readonly entries: number;
+  readonly backend?: "json" | "sqlite-wal";
   readonly lastError?: string;
+}
+
+export interface IdempotencyStore<T> {
+  get(key: string): Promise<IdempotencyRecord<T> | null>;
+  executeOnce(
+    key: string,
+    fingerprint: string,
+    createdAt: string,
+    operation: () => Promise<T>
+  ): Promise<IdempotencyExecution<T>>;
+  delete(key: string): Promise<boolean>;
+  probe(): Promise<IdempotencyProbe>;
+  flush(): Promise<void>;
 }
 
 const keyPattern = /^[A-Za-z0-9._:-]{8,128}$/u;
@@ -61,7 +75,7 @@ interface StoredState<T> {
   readonly entries: Readonly<Record<string, StoredEntry<T>>>;
 }
 
-export class FileIdempotencyStore<T> {
+export class FileIdempotencyStore<T> implements IdempotencyStore<T> {
   private readonly queue = new SerializedQueue();
   private readonly store: AtomicJsonStore<StoredState<T>>;
   private readonly ttlMs: number;
@@ -154,12 +168,12 @@ export class FileIdempotencyStore<T> {
       try {
         const state = await this.compactedState();
         return this.lastError === undefined
-          ? { status: "ok", entries: Object.keys(state.entries).length }
-          : { status: "degraded", entries: Object.keys(state.entries).length, lastError: this.lastError };
+          ? { status: "ok", entries: Object.keys(state.entries).length, backend: "json" }
+          : { status: "degraded", entries: Object.keys(state.entries).length, backend: "json", lastError: this.lastError };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.lastError = message;
-        return { status: "degraded", entries: 0, lastError: message };
+        return { status: "degraded", entries: 0, backend: "json", lastError: message };
       }
     });
   }
