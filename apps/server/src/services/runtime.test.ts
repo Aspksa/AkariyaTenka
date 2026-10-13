@@ -1,4 +1,5 @@
 import { createServer, type RequestListener } from "node:http";
+import type { RequestContext, RequestContextScope } from "@akariya/core";
 import { describe, expect, it } from "vitest";
 import { NetworkClient } from "./network-client.js";
 import { Scheduler } from "./scheduler.js";
@@ -17,6 +18,14 @@ async function httpFixture(handler: RequestListener): Promise<{
   };
 }
 
+function fixedScope(context: RequestContext): RequestContextScope {
+  return {
+    current: () => context,
+    require: () => context,
+    run: <T>(_context: RequestContext, operation: () => T): T => operation()
+  };
+}
+
 describe("NetworkClient", () => {
   it("enforces maxResponseBytes for chunked responses without Content-Length", async () => {
     const fixture = await httpFixture((_request, response) => {
@@ -24,15 +33,14 @@ describe("NetworkClient", () => {
       response.end("def");
     });
     try {
-      const client = new NetworkClient();
-      await expect(client.fetch(fixture.url, {}, { maxResponseBytes: 5, retries: 0 }))
+      await expect(new NetworkClient().fetch(fixture.url, {}, { maxResponseBytes: 5, retries: 0 }))
         .rejects.toMatchObject({ code: "EXTERNAL_SERVICE" });
     } finally {
       await fixture.close();
     }
   });
 
-  it("propagates the active correlation id without leaking other request context", async () => {
+  it("propagates correlation without leaking idempotency identity outbound", async () => {
     let observedCorrelation: string | undefined;
     let observedIdempotency: string | undefined;
     const fixture = await httpFixture((request, response) => {
@@ -40,16 +48,11 @@ describe("NetworkClient", () => {
       observedIdempotency = request.headers["idempotency-key"] as string | undefined;
       response.end("ok");
     });
-    const context = {
+    const scope = fixedScope({
       correlationId: "corr-network-1234",
       actor: "local-user",
       idempotencyKey: "request-network1"
-    };
-    const scope = {
-      current: () => context,
-      require: () => context,
-      run: <T>(_context: typeof context, operation: () => T): T => operation()
-    };
+    });
     try {
       const response = await new NetworkClient(scope).fetch(fixture.url, {}, { retries: 0 });
       expect(await response.text()).toBe("ok");
@@ -78,12 +81,7 @@ describe("NetworkClient", () => {
       response.writeHead(429, { "retry-after": "2" });
       response.end("slow down");
     });
-    const context = { correlationId: "corr-rate-12345", actor: "local-user" };
-    const scope = {
-      current: () => context,
-      require: () => context,
-      run: <T>(_context: typeof context, operation: () => T): T => operation()
-    };
+    const scope = fixedScope({ correlationId: "corr-rate-12345", actor: "local-user" });
     try {
       await expect(new NetworkClient(scope).fetch(fixture.url, {}, { retries: 0 }))
         .rejects.toMatchObject({
@@ -91,6 +89,19 @@ describe("NetworkClient", () => {
           correlationId: "corr-rate-12345",
           details: { retryAfter: "2" }
         });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("normalizes final HTTP 5xx as an external service failure", async () => {
+    const fixture = await httpFixture((_request, response) => {
+      response.writeHead(503);
+      response.end("unavailable");
+    });
+    try {
+      await expect(new NetworkClient().fetch(fixture.url, {}, { retries: 0 }))
+        .rejects.toMatchObject({ code: "EXTERNAL_SERVICE" });
     } finally {
       await fixture.close();
     }
