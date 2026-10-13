@@ -68,6 +68,7 @@ describe("persistence", () => {
     const store = new JsonlStore(path.join(root, "audit.jsonl"), z.object({ id: z.number() }));
     await Promise.all([store.append({ id: 1 }), store.append({ id: 2 }), store.append({ id: 3 })]);
     expect(await store.readAll()).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    expect(await store.readRecent(2)).toEqual([{ id: 2 }, { id: 3 }]);
   });
 
   it("executes a concurrent idempotent side effect once and replays its durable result", async () => {
