@@ -12,18 +12,34 @@ export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
   execute(input: TInput, context: RequestContext): Promise<TOutput>;
 }
 
-export class ToolRegistry {
-  private readonly tools = new Map<string, ToolDefinition>();
+interface RegisteredTool {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema: ZodType<unknown>;
+  readonly capabilities: readonly Capability[];
+  readonly risk: Risk;
+  execute(input: unknown, context: RequestContext): Promise<unknown>;
+}
 
-  register(tool: ToolDefinition): () => void {
+export class ToolRegistry {
+  private readonly tools = new Map<string, RegisteredTool>();
+
+  register<TInput, TOutput>(tool: ToolDefinition<TInput, TOutput>): () => void {
     if (!/^[a-zA-Z0-9_.-]{1,96}$/u.test(tool.name)) throw new Error("Invalid tool name: " + tool.name);
     if (this.tools.has(tool.name)) throw new Error("Duplicate tool: " + tool.name);
-    this.tools.set(tool.name, tool);
+    this.tools.set(tool.name, {
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema as ZodType<unknown>,
+      capabilities: tool.capabilities,
+      risk: tool.risk,
+      execute: (input, context) => tool.execute(input as TInput, context)
+    });
     return () => { this.tools.delete(tool.name); };
   }
 
-  get(name: string): ToolDefinition | undefined { return this.tools.get(name); }
-  list(): readonly ToolDefinition[] { return [...this.tools.values()]; }
+  get(name: string): RegisteredTool | undefined { return this.tools.get(name); }
+  list(): readonly RegisteredTool[] { return [...this.tools.values()]; }
 }
 
 export type ToolExecutionResult =
