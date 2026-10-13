@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { AppError, type Logger, type RequestContext, type RequestContextScope } from "@akariya/core";
 import { apiErrorSchema, correlationIdSchema, idempotencyKeySchema } from "@akariya/contracts";
 import { AsyncLocalRequestContextScope } from "../adapters/request-context-scope.js";
@@ -10,6 +10,7 @@ import type { AppConfig } from "./config.js";
 
 export interface HttpRouteSet {
   readonly health: (context: RequestContext) => Promise<string>;
+  readonly supervisorShutdown?: () => Promise<void>;
 }
 
 const contentTypes: Readonly<Record<string, string>> = {
@@ -43,6 +44,17 @@ function idempotencyKey(request: IncomingMessage, correlationIdValue: string): s
   return parsed.data;
 }
 
+
+function authorizedSupervisorShutdown(config: AppConfig, request: IncomingMessage): boolean {
+  if (!config.supervised || config.supervisorToken === undefined) return false;
+  const authorization = request.headers.authorization;
+  const expected = "Bearer " + config.supervisorToken;
+  if (authorization === undefined) return false;
+  const actualBytes = Buffer.from(authorization);
+  const expectedBytes = Buffer.from(expected);
+  return actualBytes.length === expectedBytes.length && timingSafeEqual(actualBytes, expectedBytes);
+}
+
 function statusFor(error: AppError): number {
   switch (error.code) {
     case "VALIDATION": return 400;
@@ -69,11 +81,21 @@ export function createHttpApplication(
 
     await requestContext.run(baseContext, async () => {
       try {
+        const url = new URL(request.url ?? "/", "http://" + (request.headers.host ?? "localhost"));
+        if (request.method === "POST" && url.pathname === "/api/_supervisor/shutdown") {
+          if (!authorizedSupervisorShutdown(config, request) || routes.supervisorShutdown === undefined) {
+            throw new AppError({ code: "PERMISSION", message: "Supervisor authorization required", correlationId: id });
+          }
+          response.writeHead(202, { "cache-control": "no-store", "content-length": "0" });
+          response.end();
+          setImmediate(() => { void routes.supervisorShutdown?.(); });
+          return;
+        }
+
         const key = idempotencyKey(request, id);
         const context: RequestContext = key === undefined ? baseContext : { ...baseContext, idempotencyKey: key };
 
         await requestContext.run(context, async () => {
-          const url = new URL(request.url ?? "/", "http://" + (request.headers.host ?? "localhost"));
           if (request.method === "GET" && url.pathname === "/api/health") {
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
             response.end(await routes.health(context));
