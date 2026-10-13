@@ -6,6 +6,7 @@ import {
   conversationMessageSchema,
   conversationSessionSchema,
   memoryIdSchema,
+  memoryMatchScore,
   memoryQueryTokens,
   memoryRecordSchema,
   memoryScopeSchema,
@@ -43,10 +44,17 @@ function assertLimit(value: number, min: number, max: number, label: string): vo
   }
 }
 
-function memoryMatches(record: MemoryRecord, tokens: readonly string[]): boolean {
-  if (tokens.length === 0) return true;
-  const text = record.text.toLowerCase();
-  return tokens.every((token) => text.includes(token));
+function rankMemory(records: readonly MemoryRecord[], tokens: readonly string[], limit: number): readonly MemoryRecord[] {
+  return records
+    .map((record) => ({ record, score: memoryMatchScore(record.text, tokens) }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) =>
+      right.score - left.score
+      || right.record.updatedAt.localeCompare(left.record.updatedAt)
+      || left.record.id.localeCompare(right.record.id)
+    )
+    .slice(0, limit)
+    .map((entry) => entry.record);
 }
 
 export class JsonAssistantStateStore implements AssistantStateStore {
@@ -129,10 +137,11 @@ export class JsonAssistantStateStore implements AssistantStateStore {
     assertLimit(limit, 1, 64, "Memory search limit");
     const tokens = memoryQueryTokens(input.query);
     const state = await this.read();
-    return Object.values(state.memories)
-      .filter((record) => record.scope === scope && memoryMatches(record, tokens))
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
-      .slice(0, limit);
+    return rankMemory(
+      Object.values(state.memories).filter((record) => record.scope === scope),
+      tokens,
+      limit
+    );
   }
 
   async listRecent(scopeValue: string, limit = 20): Promise<readonly MemoryRecord[]> {
@@ -390,7 +399,7 @@ export class SqliteAssistantStateStore implements AssistantStateStore {
         ORDER BY updated_at DESC, id ASC
         LIMIT 512
       `).all(scope).map((row) => this.memoryFromRow(row));
-      return candidates.filter((record) => memoryMatches(record, tokens)).slice(0, limit);
+      return rankMemory(candidates, tokens, limit);
     });
   }
 
