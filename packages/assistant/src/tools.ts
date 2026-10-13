@@ -1,7 +1,7 @@
 import { AppError, SystemClock, type Clock, type RequestContext } from "@akariya/core";
 import type { ApprovalGate, AuditSink, Capability, Risk, SecurityPolicy } from "@akariya/security";
 import { randomUUID } from "node:crypto";
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 
 export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
   readonly name: string;
@@ -21,6 +21,12 @@ interface RegisteredTool {
   readonly capabilities: readonly Capability[];
   readonly risk: Risk;
   execute(input: unknown, context: RequestContext): Promise<unknown>;
+}
+
+export interface ToolDescriptor {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema: unknown;
 }
 
 export class ToolRegistry {
@@ -43,6 +49,14 @@ export class ToolRegistry {
 
   get(name: string): RegisteredTool | undefined { return this.tools.get(name); }
   list(): readonly RegisteredTool[] { return [...this.tools.values()]; }
+
+  describe(): readonly ToolDescriptor[] {
+    return [...this.tools.values()].map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: z.toJSONSchema(tool.inputSchema)
+    }));
+  }
 }
 
 export type ToolExecutionResult =

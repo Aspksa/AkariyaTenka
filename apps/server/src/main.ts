@@ -21,7 +21,7 @@ async function main(): Promise<void> {
   const logger = new Logger("akariya", config.logLevel, undefined, createSecretRedactor(process.env), clock, requestContext);
   const storage = await createStorage(config);
   const security = createSecurity(storage.audit, clock, process.env);
-  createAssistant(security.policy, security.approvals, storage.audit, clock);
+  createAssistant(security.policy, security.approvals, storage.audit, clock, storage.assistant);
   const modules = createModules(clock, requestContext);
   await modules.kernel.start();
 
@@ -33,6 +33,7 @@ async function main(): Promise<void> {
         ? { state: "started", recoverable: true }
         : { state: "degraded", recoverable: true, lastError: probe.lastError ?? "Idempotency storage degraded" };
     },
+    "storage.assistant": () => storage.assistant.health(),
     "security.secrets": () => {
       security.secrets.probe();
       return { state: "started", recoverable: true };
@@ -61,7 +62,11 @@ async function main(): Promise<void> {
       closeHttp: () => new Promise<void>((resolve) => server.close(() => resolve())),
       stopRuntime: () => modules.kernel.stop(),
       flushPersistence: async () => {
-        await Promise.all([storage.audit.flush(), storage.idempotency.flush()]);
+        await Promise.all([
+          storage.audit.flush(),
+          storage.idempotency.flush(),
+          storage.assistant.close()
+        ]);
       }
     }
   );

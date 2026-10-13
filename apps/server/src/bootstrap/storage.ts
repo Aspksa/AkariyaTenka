@@ -7,6 +7,10 @@ import {
   type IdempotencyStore
 } from "@akariya/persistence";
 import type { AppConfig } from "./config.js";
+import {
+  createAssistantStateStore,
+  type AssistantStateStore
+} from "../adapters/assistant-state-store.js";
 import { FileAuditSink } from "../adapters/file-audit-sink.js";
 
 const idempotencyValueSchema = z.object({
@@ -20,6 +24,7 @@ export interface RuntimeStorage {
   readonly audit: FileAuditSink;
   readonly idempotency: IdempotencyStore<IdempotencyValue>;
   readonly idempotencyBackend: "json" | "sqlite-wal";
+  readonly assistant: AssistantStateStore;
 }
 
 export async function createStorage(config: AppConfig): Promise<RuntimeStorage> {
@@ -42,6 +47,8 @@ export async function createStorage(config: AppConfig): Promise<RuntimeStorage> 
         options
       );
 
+  const assistant = await createAssistantStateStore(config.dataDir);
+
   return {
     audit: new FileAuditSink(
       path.join(config.dataDir, "audit.jsonl"),
@@ -49,6 +56,7 @@ export async function createStorage(config: AppConfig): Promise<RuntimeStorage> 
       config.auditMaxArchives
     ),
     idempotency,
-    idempotencyBackend: major >= 22 ? "sqlite-wal" : "json"
+    idempotencyBackend: major >= 22 ? "sqlite-wal" : "json",
+    assistant
   };
 }
