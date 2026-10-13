@@ -30,6 +30,10 @@ export class AtomicJsonStore<T> {
     await this.queue.idle();
   }
 
+  quarantine(): Promise<string> {
+    return this.queue.run(() => this.quarantineInternal());
+  }
+
   private async readInternal(): Promise<StoreRead<T>> {
     let text: string;
     try {
