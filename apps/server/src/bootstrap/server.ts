@@ -1,28 +1,16 @@
-import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import path from "node:path";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { AppError, type Logger, type RequestContext, type RequestContextScope } from "@akariya/core";
 import { apiErrorSchema, correlationIdSchema, idempotencyKeySchema } from "@akariya/contracts";
 import { AsyncLocalRequestContextScope } from "../adapters/request-context-scope.js";
 import type { AppConfig } from "./config.js";
+import { StaticWebServer } from "../services/static-web.js";
 
 export interface HttpRouteSet {
   readonly health: (context: RequestContext) => Promise<string>;
   readonly performance?: (context: RequestContext) => Promise<string>;
   readonly supervisorShutdown?: () => Promise<void>;
 }
-
-const contentTypes: Readonly<Record<string, string>> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".ico": "image/x-icon"
-};
 
 function correlationId(request: IncomingMessage): string {
   const value = request.headers["x-correlation-id"];
@@ -75,6 +63,7 @@ export function createHttpApplication(
   logger: Logger,
   requestContext: RequestContextScope = new AsyncLocalRequestContextScope()
 ) {
+  const staticWeb = new StaticWebServer(config.webDist);
   return createServer(async (request, response) => {
     const id = correlationId(request);
     const baseContext: RequestContext = { correlationId: id, actor: "local-user" };
@@ -110,7 +99,7 @@ export function createHttpApplication(
           if (url.pathname.startsWith("/api/")) {
             throw new AppError({ code: "NOT_FOUND", message: "API route not found", correlationId: id });
           }
-          await serveWeb(config.webDist, url.pathname, response);
+          await staticWeb.serve(request, response, url.pathname);
         });
       } catch (error) {
         const appError = error instanceof AppError
@@ -132,33 +121,5 @@ export function createHttpApplication(
         response.end(JSON.stringify(payload));
       }
     });
-  });
-}
-
-async function serveWeb(webDist: string, pathname: string, response: ServerResponse): Promise<void> {
-  const requested = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-  const root = path.resolve(webDist);
-  const direct = path.resolve(root, requested);
-  if (direct !== root && !direct.startsWith(root + path.sep)) throw new AppError({ code: "NOT_FOUND", message: "Not found" });
-
-  let file = direct;
-  try {
-    if (!(await stat(file)).isFile()) file = path.join(root, "index.html");
-  } catch {
-    file = path.join(root, "index.html");
-  }
-
-  try {
-    if (!(await stat(file)).isFile()) throw new Error("missing web build");
-  } catch {
-    throw new AppError({ code: "NOT_FOUND", message: "Web build not found" });
-  }
-
-  response.writeHead(200, { "content-type": contentTypes[path.extname(file)] ?? "application/octet-stream" });
-  await new Promise<void>((resolve, reject) => {
-    const stream = createReadStream(file);
-    stream.on("error", reject);
-    response.on("finish", resolve);
-    stream.pipe(response);
   });
 }

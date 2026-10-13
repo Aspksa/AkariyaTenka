@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +7,9 @@ import { performance } from "node:perf_hooks";
 
 const STARTUP_BUDGET_MS = 5_000;
 const HEALTH_P95_BUDGET_MS = 250;
+const WEB_INDEX_P95_BUDGET_MS = 100;
+const WEB_REVALIDATE_P95_BUDGET_MS = 50;
+const WEB_ASSET_P95_BUDGET_MS = 50;
 const RSS_BUDGET_BYTES = 256 * 1024 * 1024;
 
 async function freePort() {
@@ -26,6 +29,17 @@ function percentile(values, ratio) {
   const sorted = [...values].sort((a, b) => a - b);
   const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * ratio) - 1));
   return sorted[index] ?? 0;
+}
+
+async function timedFetch(url, init = {}) {
+  const started = performance.now();
+  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(1_000) });
+  const elapsed = performance.now() - started;
+  return { response, elapsed };
+}
+
+function enforceBudget(name, value, budget) {
+  if (value > budget) throw new Error(name + " budget exceeded: " + value.toFixed(2) + " ms > " + budget + " ms");
 }
 
 const dataDir = await mkdtemp(path.join(os.tmpdir(), "akariya-perf-"));
@@ -73,21 +87,68 @@ try {
 
   const startupMs = performance.now() - startedAt;
   if (!ready) throw new Error("Server did not become ready within performance budget.\n" + stderr);
-  if (startupMs > STARTUP_BUDGET_MS) throw new Error("Startup budget exceeded: " + startupMs.toFixed(1) + " ms");
+  enforceBudget("Startup", startupMs, STARTUP_BUDGET_MS);
 
-  const latencies = [];
+  const healthLatencies = [];
   for (let index = 0; index < 25; index += 1) {
-    const before = performance.now();
-    const response = await fetch(base + "/api/health", { signal: AbortSignal.timeout(1_000) });
+    const { response, elapsed } = await timedFetch(base + "/api/health");
     if (!response.ok) throw new Error("Health request failed during performance budget");
     await response.arrayBuffer();
-    latencies.push(performance.now() - before);
+    healthLatencies.push(elapsed);
   }
+  const healthP95 = percentile(healthLatencies, 0.95);
+  enforceBudget("Health p95", healthP95, HEALTH_P95_BUDGET_MS);
 
-  const p95 = percentile(latencies, 0.95);
-  if (p95 > HEALTH_P95_BUDGET_MS) {
-    throw new Error("Health p95 budget exceeded: " + p95.toFixed(1) + " ms");
+  const indexHtml = await readFile("apps/web/dist/index.html", "utf8");
+  const entryMatch = indexHtml.match(/<script\b[^>]*\bsrc=["']([^"']+\.js)["'][^>]*>/iu);
+  const entryPath = entryMatch?.[1];
+  if (!entryPath) throw new Error("Could not locate initial web entry asset");
+
+  const indexLatencies = [];
+  let indexEtag = "";
+  for (let index = 0; index < 20; index += 1) {
+    const { response, elapsed } = await timedFetch(base + "/", {
+      headers: { "accept-encoding": "identity" }
+    });
+    if (!response.ok) throw new Error("Web index request failed");
+    if (response.headers.get("cache-control") !== "no-cache") throw new Error("Web index must use no-cache");
+    indexEtag ||= response.headers.get("etag") ?? "";
+    await response.arrayBuffer();
+    indexLatencies.push(elapsed);
   }
+  if (!indexEtag) throw new Error("Web index did not provide ETag");
+  const indexP95 = percentile(indexLatencies, 0.95);
+  enforceBudget("Web index p95", indexP95, WEB_INDEX_P95_BUDGET_MS);
+
+  const revalidateLatencies = [];
+  for (let index = 0; index < 20; index += 1) {
+    const { response, elapsed } = await timedFetch(base + "/", {
+      headers: {
+        "accept-encoding": "identity",
+        "if-none-match": indexEtag
+      }
+    });
+    if (response.status !== 304) throw new Error("Web index ETag did not return 304");
+    revalidateLatencies.push(elapsed);
+  }
+  const revalidateP95 = percentile(revalidateLatencies, 0.95);
+  enforceBudget("Web revalidation p95", revalidateP95, WEB_REVALIDATE_P95_BUDGET_MS);
+
+  const assetLatencies = [];
+  for (let index = 0; index < 20; index += 1) {
+    const { response, elapsed } = await timedFetch(base + entryPath, {
+      headers: { "accept-encoding": "br" }
+    });
+    if (!response.ok) throw new Error("Initial web asset request failed");
+    if (response.headers.get("content-encoding") !== "br") throw new Error("Initial web asset was not served as Brotli");
+    if (response.headers.get("cache-control") !== "public, max-age=31536000, immutable") {
+      throw new Error("Hashed web asset is not immutable");
+    }
+    await response.arrayBuffer();
+    assetLatencies.push(elapsed);
+  }
+  const assetP95 = percentile(assetLatencies, 0.95);
+  enforceBudget("Web asset p95", assetP95, WEB_ASSET_P95_BUDGET_MS);
 
   const metricsResponse = await fetch(base + "/api/performance", { signal: AbortSignal.timeout(1_000) });
   if (!metricsResponse.ok) throw new Error("Performance endpoint failed");
@@ -99,11 +160,17 @@ try {
 
   console.log(JSON.stringify({
     startupMs: Math.round(startupMs),
-    healthP95Ms: Number(p95.toFixed(2)),
+    healthP95Ms: Number(healthP95.toFixed(2)),
+    webIndexP95Ms: Number(indexP95.toFixed(2)),
+    webRevalidateP95Ms: Number(revalidateP95.toFixed(2)),
+    webAssetP95Ms: Number(assetP95.toFixed(2)),
     rssMiB: Number((rssBytes / 1024 / 1024).toFixed(2)),
     budgets: {
       startupMs: STARTUP_BUDGET_MS,
       healthP95Ms: HEALTH_P95_BUDGET_MS,
+      webIndexP95Ms: WEB_INDEX_P95_BUDGET_MS,
+      webRevalidateP95Ms: WEB_REVALIDATE_P95_BUDGET_MS,
+      webAssetP95Ms: WEB_ASSET_P95_BUDGET_MS,
       rssMiB: RSS_BUDGET_BYTES / 1024 / 1024
     }
   }, null, 2));

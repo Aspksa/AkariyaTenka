@@ -1,3 +1,4 @@
+import { brotliCompressSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -64,6 +65,45 @@ describe("HTTP skeleton", () => {
     expect(response.status).toBe(200);
     expect(body.status).toBe("healthy");
     await kernel.stop();
+  });
+
+  it("serves immutable compressed assets and revalidates HTML with ETag", async () => {
+    const webDist = await webFixture();
+    await mkdir(path.join(webDist, "assets"), { recursive: true });
+    const asset = "console.log('Akariya Tenka web performance');".repeat(20);
+    const assetPath = path.join(webDist, "assets", "app-abcdef12.js");
+    await writeFile(assetPath, asset, "utf8");
+    await writeFile(assetPath + ".br", brotliCompressSync(Buffer.from(asset)));
+
+    const server = createHttpApplication(
+      config(webDist),
+      { health: async () => "{}" },
+      new Logger("test", "silent")
+    );
+    const port = await listen(server);
+    const base = "http://127.0.0.1:" + port;
+
+    const compressed = await fetch(base + "/assets/app-abcdef12.js", {
+      headers: { "accept-encoding": "br" }
+    });
+    expect(compressed.status).toBe(200);
+    expect(compressed.headers.get("content-encoding")).toBe("br");
+    expect(compressed.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(await compressed.text()).toBe(asset);
+
+    const html = await fetch(base + "/", { headers: { "accept-encoding": "identity" } });
+    expect(html.headers.get("cache-control")).toBe("no-cache");
+    const etag = html.headers.get("etag");
+    expect(etag).toBeTruthy();
+    await html.arrayBuffer();
+
+    const revalidated = await fetch(base + "/", {
+      headers: {
+        "accept-encoding": "identity",
+        "if-none-match": etag ?? ""
+      }
+    });
+    expect(revalidated.status).toBe(304);
   });
 
   it("allows only the supervised launcher token to request shutdown", async () => {
