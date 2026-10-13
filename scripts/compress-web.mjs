@@ -2,6 +2,7 @@ import { brotliCompress, gzip } from "node:zlib";
 import { promisify } from "node:util";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const brotli = promisify(brotliCompress);
 const gzipAsync = promisify(gzip);
@@ -62,7 +63,7 @@ async function main() {
   console.log(JSON.stringify(summary));
 }
 
-if (import.meta.url === new URL("file://" + process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.stack ?? error.message : String(error));
     process.exitCode = 1;
