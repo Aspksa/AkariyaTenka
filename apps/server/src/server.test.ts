@@ -19,7 +19,19 @@ async function webFixture(): Promise<string> {
 }
 
 function config(webDist: string) {
-  return { host: "127.0.0.1", port: 0, dataDir: webDist, webDist, logLevel: "silent" as const, supervised: false };
+  return {
+    host: "127.0.0.1",
+    port: 0,
+    dataDir: webDist,
+    webDist,
+    logLevel: "silent" as const,
+    supervised: false,
+    idempotencyTtlMs: 60_000,
+    idempotencyMaxEntries: 100,
+    auditMaxBytes: 1_000_000,
+    auditMaxArchives: 2,
+    shutdownTimeoutMs: 1_000
+  };
 }
 
 async function listen(server: ReturnType<typeof createHttpApplication>): Promise<number> {
