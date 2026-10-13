@@ -36,7 +36,16 @@ async function main(): Promise<void> {
     }
   });
 
-  const server = createHttpApplication(config, { health: createHealthRoute(health) }, logger, requestContext);
+  let requestSupervisorShutdown: (() => void) | undefined;
+  const server = createHttpApplication(
+    config,
+    {
+      health: createHealthRoute(health),
+      supervisorShutdown: async () => { requestSupervisorShutdown?.(); }
+    },
+    logger,
+    requestContext
+  );
   await new Promise<void>((resolve) => server.listen(config.port, config.host, resolve));
   logger.info("Akariya Tenka listening on http://" + config.host + ":" + config.port);
 
@@ -51,6 +60,8 @@ async function main(): Promise<void> {
       }
     }
   );
+
+  requestSupervisorShutdown = () => { void shutdown.shutdown(0, "supervisor"); };
 
   const crash = (kind: string, reason: unknown): void => {
     const error = toError(reason);
