@@ -3,7 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { AtomicJsonStore, FileIdempotencyStore, JsonlStore, VersionedJsonStore } from "./index.js";
+import {
+  AtomicJsonStore,
+  FileIdempotencyStore,
+  IdempotencyConflictError,
+  JsonlStore,
+  VersionedJsonStore,
+  idempotencyFingerprint
+} from "./index.js";
 
 describe("persistence", () => {
   it("writes and validates JSON atomically", async () => {
@@ -44,6 +51,18 @@ describe("persistence", () => {
     expect(result).toMatchObject({ status: "ok", migrated: true, value: { schemaVersion: 2, data: { name: "A", active: true } } });
   });
 
+  it("quarantines state when migration output fails runtime validation", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akariya-bad-migrate-"));
+    const file = path.join(root, "state.json");
+    await writeFile(file, JSON.stringify({ schemaVersion: 1, data: { name: "A" } }), "utf8");
+    const store = new VersionedJsonStore(file, 2, z.object({ name: z.string(), active: z.boolean() }), [
+      { from: 1, to: 2, migrate: () => ({ name: 42, active: "wrong" }) }
+    ]);
+    const result = await store.read();
+    expect(result.status).toBe("degraded");
+    expect((await readdir(root)).some((name) => name.startsWith("state.json.corrupt-"))).toBe(true);
+  });
+
   it("serializes JSONL appends", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "akariya-jsonl-"));
     const store = new JsonlStore(path.join(root, "audit.jsonl"), z.object({ id: z.number() }));
@@ -51,24 +70,51 @@ describe("persistence", () => {
     expect(await store.readAll()).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
   });
 
-  it("allows only one concurrent idempotency record for the same key", async () => {
+  it("executes a concurrent idempotent side effect once and replays its durable result", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "akariya-idempotency-"));
     const store = new FileIdempotencyStore(
       path.join(root, "idempotency.json"),
-      z.object({ value: z.number().int() })
+      z.object({ receipt: z.string() })
     );
-    const createdAt = "2026-10-14T00:00:00.000Z";
-    const results = await Promise.all(Array.from({ length: 20 }, (_, value) => store.putIfAbsent({
-      key: "request-12345678",
-      createdAt,
-      value: { value }
-    })));
-    expect(results.filter((result) => result.inserted)).toHaveLength(1);
-    expect(await store.get("request-12345678")).toEqual({
-      key: "request-12345678",
-      createdAt,
-      value: { value: 0 }
-    });
+    const key = "request-12345678";
+    const fingerprint = idempotencyFingerprint({ amount: 25, currency: "EUR" });
+    let executions = 0;
+    const operation = async () => {
+      executions += 1;
+      await Promise.resolve();
+      return { receipt: "r-" + executions };
+    };
+
+    const [first, second] = await Promise.all([
+      store.executeOnce(key, fingerprint, "2026-10-14T00:00:00.000Z", operation),
+      store.executeOnce(key, fingerprint, "2026-10-14T00:00:00.000Z", operation)
+    ]);
+
+    expect(executions).toBe(1);
+    expect(first.replayed).toBe(false);
+    expect(second.replayed).toBe(true);
+    expect(first.record.value).toEqual(second.record.value);
+  });
+
+  it("rejects idempotency-key reuse with different arguments", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akariya-idempotency-conflict-"));
+    const store = new FileIdempotencyStore(
+      path.join(root, "idempotency.json"),
+      z.object({ ok: z.boolean() })
+    );
+    const key = "request-conflict1";
+    await store.executeOnce(
+      key,
+      idempotencyFingerprint({ value: 1 }),
+      "2026-10-14T00:00:00.000Z",
+      async () => ({ ok: true })
+    );
+    await expect(store.executeOnce(
+      key,
+      idempotencyFingerprint({ value: 2 }),
+      "2026-10-14T00:00:01.000Z",
+      async () => ({ ok: false })
+    )).rejects.toBeInstanceOf(IdempotencyConflictError);
   });
 
   it("fails closed when durable idempotency state is corrupt", async () => {
@@ -76,11 +122,12 @@ describe("persistence", () => {
     const file = path.join(root, "idempotency.json");
     await writeFile(file, "not-json", "utf8");
     const store = new FileIdempotencyStore(file, z.object({ ok: z.boolean() }));
-    await expect(store.putIfAbsent({
-      key: "request-corrupt1",
-      createdAt: "2026-10-14T00:00:00.000Z",
-      value: { ok: true }
-    })).rejects.toThrow(/degraded/i);
+    await expect(store.executeOnce(
+      "request-corrupt1",
+      idempotencyFingerprint({ ok: true }),
+      "2026-10-14T00:00:00.000Z",
+      async () => ({ ok: true })
+    )).rejects.toThrow(/degraded/i);
     expect((await readdir(root)).some((name) => name.startsWith("idempotency.json.corrupt-"))).toBe(true);
   });
 });
