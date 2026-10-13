@@ -161,6 +161,14 @@ export class AssistantRuntime {
       const turnId = context.idempotencyKey ?? randomUUID();
       const existing = await this.conversations.listTurnMessages(sessionId, turnId);
       if (existing.length > 0) {
+        const originalUserMessage = existing.find((message) => message.role === "user");
+        if (originalUserMessage === undefined || originalUserMessage.content !== text) {
+          throw new AppError({
+            code: "CONFLICT",
+            message: "Idempotency key is already bound to a different assistant input",
+            correlationId: context.correlationId
+          });
+        }
         const completed = [...existing].reverse().find(
           (message) => message.role === "assistant" && (message.toolCalls?.length ?? 0) === 0
         );
