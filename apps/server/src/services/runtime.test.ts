@@ -76,6 +76,40 @@ describe("NetworkClient", () => {
     }
   });
 
+  it("streams bounded responses without buffering the full body", async () => {
+    const fixture = await httpFixture((_request, response) => {
+      response.write("ab");
+      setTimeout(() => response.end("cd"), 10);
+    });
+    try {
+      const response = await new NetworkClient().fetchStream(
+        fixture.url,
+        {},
+        { maxResponseBytes: 4, retries: 0, streamIdleTimeoutMs: 1000 }
+      );
+      expect(await response.text()).toBe("abcd");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("enforces the byte limit while consuming a stream", async () => {
+    const fixture = await httpFixture((_request, response) => {
+      response.write("abc");
+      response.end("def");
+    });
+    try {
+      const response = await new NetworkClient().fetchStream(
+        fixture.url,
+        {},
+        { maxResponseBytes: 5, retries: 0, streamIdleTimeoutMs: 1000 }
+      );
+      await expect(response.text()).rejects.toMatchObject({ code: "EXTERNAL_SERVICE" });
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("normalizes final HTTP 429 and preserves the active correlation id", async () => {
     const fixture = await httpFixture((_request, response) => {
       response.writeHead(429, { "retry-after": "2" });
