@@ -26,6 +26,8 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: Launcher syntax
+        run: node --check scripts/launch.mjs && node --check scripts/apply-update.mjs && node --check scripts/build-server.mjs && node --check scripts/workspace-health.mjs
       - name: Typecheck
         run: npm run typecheck
       - name: Test
