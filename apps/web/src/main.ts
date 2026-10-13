@@ -1,5 +1,5 @@
 import "./styles.css";
-import { getHealth } from "./api/client.js";
+import { getHealth } from "./api/health.js";
 import { createHomeView } from "./pages/home.js";
 import { FrameBatcher } from "./runtime/frame-batcher.js";
 import { HealthStore } from "./state/health.js";
