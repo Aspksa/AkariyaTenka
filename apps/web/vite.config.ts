@@ -8,6 +8,12 @@ export default defineConfig({
       "@akariya/contracts": fileURLToPath(new URL("../../packages/contracts/src/index.ts", import.meta.url))
     }
   },
+  build: {
+    target: "es2022",
+    sourcemap: false,
+    cssCodeSplit: true,
+    modulePreload: { polyfill: false }
+  },
   server: {
     host: "127.0.0.1",
     port: 5173,
