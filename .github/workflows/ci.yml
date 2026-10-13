@@ -51,3 +51,38 @@ jobs:
         run: npm run build
       - name: Runtime smoke
         run: npm run smoke
+      - name: Production launcher smoke
+        env:
+          AKARIYA_LAUNCHER_SMOKE: "1"
+        run: npm start -- --no-open --skip-checks --port 4273
+      - name: Development launcher smoke
+        env:
+          AKARIYA_LAUNCHER_SMOKE: "1"
+        run: npm run dev -- --no-open --skip-checks --port 4373
+      - name: Fresh ZIP BAT and portable Node smoke
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "akariya-launcher-smoke.zip"
+          $destination = Join-Path $env:RUNNER_TEMP "Akariya Tenka Fresh ZIP"
+          if (Test-Path $destination) { Remove-Item $destination -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          git archive --format=zip HEAD -o $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
+
+          $system32 = Join-Path $env:SystemRoot "System32"
+          $env:PATH = "$system32;$env:SystemRoot;$(Join-Path $system32 'WindowsPowerShell\\v1.0')"
+          $env:AKARIYA_LAUNCHER_SMOKE = "1"
+
+          Push-Location $env:RUNNER_TEMP
+          try {
+            & (Join-Path $destination "AKARIYA.bat") --no-open --skip-checks --port 4473
+            if ($LASTEXITCODE -ne 0) { throw "AKARIYA.bat failed with exit code $LASTEXITCODE" }
+            $portableNode = Join-Path $destination ".runtime\\node\\node.exe"
+            if (-not (Test-Path $portableNode)) { throw "Portable Node.js was not installed" }
+            & $portableNode -e "process.exit(process.versions.node === '22.23.3' ? 0 : 1)"
+            if ($LASTEXITCODE -ne 0) { throw "Portable Node.js version verification failed" }
+          }
+          finally {
+            Pop-Location
+          }
