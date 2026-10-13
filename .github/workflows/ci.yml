@@ -16,13 +16,14 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        node: ["20", "22"]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: ${{ matrix.node }}
           cache: npm
       - name: Install
         run: npm ci --no-audit --no-fund --ignore-scripts
@@ -60,7 +61,7 @@ jobs:
           AKARIYA_LAUNCHER_SMOKE: "1"
         run: npm run dev -- --no-open --skip-checks --port 4373
       - name: Fresh ZIP BAT and portable Node smoke
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.node == '22'
         shell: pwsh
         run: |
           $archive = Join-Path $env:RUNNER_TEMP "akariya-launcher-smoke.zip"
@@ -71,14 +72,14 @@ jobs:
           Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
 
           $system32 = Join-Path $env:SystemRoot "System32"
-          $env:PATH = "$system32;$env:SystemRoot;$(Join-Path $system32 'WindowsPowerShell\\v1.0')"
+          $env:PATH = "$system32;$env:SystemRoot;$(Join-Path $system32 'WindowsPowerShell\v1.0')"
           $env:AKARIYA_LAUNCHER_SMOKE = "1"
 
           Push-Location $env:RUNNER_TEMP
           try {
             & (Join-Path $destination "AKARIYA.bat") --no-open --skip-checks --port 4473
             if ($LASTEXITCODE -ne 0) { throw "AKARIYA.bat failed with exit code $LASTEXITCODE" }
-            $portableNode = Join-Path $destination ".runtime\\node\\node.exe"
+            $portableNode = Join-Path $destination ".runtime\node\node.exe"
             if (-not (Test-Path $portableNode)) { throw "Portable Node.js was not installed" }
             & $portableNode -e "process.exit(process.versions.node === '22.23.3' ? 0 : 1)"
             if ($LASTEXITCODE -ne 0) { throw "Portable Node.js version verification failed" }

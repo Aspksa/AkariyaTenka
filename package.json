@@ -3,8 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
-  "engines": { "node": ">=20" },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "node scripts/launch.mjs --dev",
     "build:ts": "tsc -b packages/core packages/contracts packages/persistence packages/security packages/assistant apps/server",
@@ -16,7 +21,9 @@
     "typecheck": "tsc -b packages/core packages/contracts packages/persistence packages/security packages/assistant apps/server && tsc -p apps/web/tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
     "check": "npm run typecheck && npm test && npm run build",
     "smoke": "node scripts/smoke.mjs",
-    "clean": "node scripts/clean.mjs"
+    "clean": "node scripts/clean.mjs",
+    "security:audit": "npm audit --omit=dev --audit-level=high",
+    "sbom": "npm sbom --sbom-format cyclonedx --sbom-type application"
   },
   "dependencies": {
     "zod": "^4.1.12"
@@ -24,7 +31,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.9.3",
-    "vite": "^5.4.21",
-    "vitest": "^2.1.9"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
   }
 }

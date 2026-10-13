@@ -19,7 +19,19 @@ async function webFixture(): Promise<string> {
 }
 
 function config(webDist: string) {
-  return { host: "127.0.0.1", port: 0, dataDir: webDist, webDist, logLevel: "silent" as const, supervised: false };
+  return {
+    host: "127.0.0.1",
+    port: 0,
+    dataDir: webDist,
+    webDist,
+    logLevel: "silent" as const,
+    supervised: false,
+    idempotencyTtlMs: 60_000,
+    idempotencyMaxEntries: 100,
+    auditMaxBytes: 1_000_000,
+    auditMaxArchives: 2,
+    shutdownTimeoutMs: 1_000
+  };
 }
 
 async function listen(server: ReturnType<typeof createHttpApplication>): Promise<number> {
@@ -51,6 +63,37 @@ describe("HTTP skeleton", () => {
     const body = await response.json() as { status?: string };
     expect(response.status).toBe(200);
     expect(body.status).toBe("healthy");
+    await kernel.stop();
+  });
+
+  it("reports recoverable storage failures as degraded health", async () => {
+    const webDist = await webFixture();
+    class Healthy extends LifecycleAdapter {
+      async start(): Promise<void> {}
+      async stop(): Promise<void> {}
+    }
+    const kernel = new Kernel();
+    kernel.register({ name: "runtime", service: new Healthy() });
+    await kernel.start();
+    const health = new HealthService(kernel, undefined, {
+      "storage.audit": async () => ({ state: "degraded", recoverable: true, lastError: "disk unavailable" })
+    });
+    const server = createHttpApplication(
+      config(webDist),
+      { health: createHealthRoute(health) },
+      new Logger("test", "silent")
+    );
+    const port = await listen(server);
+    const response = await fetch("http://127.0.0.1:" + port + "/api/health");
+    const body = await response.json() as {
+      status?: string;
+      modules?: Record<string, { state?: string; lastError?: string }>;
+    };
+    expect(body.status).toBe("degraded");
+    expect(body.modules?.["storage.audit"]).toMatchObject({
+      state: "degraded",
+      lastError: "disk unavailable"
+    });
     await kernel.stop();
   });
 

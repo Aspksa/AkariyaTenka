@@ -68,6 +68,7 @@ describe("persistence", () => {
     const store = new JsonlStore(path.join(root, "audit.jsonl"), z.object({ id: z.number() }));
     await Promise.all([store.append({ id: 1 }), store.append({ id: 2 }), store.append({ id: 3 })]);
     expect(await store.readAll()).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+    expect(await store.readRecent(2)).toEqual([{ id: 2 }, { id: 3 }]);
   });
 
   it("executes a concurrent idempotent side effect once and replays its durable result", async () => {
@@ -115,6 +116,55 @@ describe("persistence", () => {
       "2026-10-14T00:00:01.000Z",
       async () => ({ ok: false })
     )).rejects.toBeInstanceOf(IdempotencyConflictError);
+  });
+
+  it("bounds idempotency state by age and entry count", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akariya-idempotency-retention-"));
+    let now = Date.parse("2026-10-14T12:00:00.000Z");
+    const store = new FileIdempotencyStore(
+      path.join(root, "idempotency.json"),
+      z.object({ ok: z.boolean() }),
+      { ttlMs: 60 * 60 * 1000, maxEntries: 2, nowMs: () => now }
+    );
+
+    for (const [key, createdAt] of [
+      ["request-retain01", "2026-10-14T11:30:00.000Z"],
+      ["request-retain02", "2026-10-14T11:40:00.000Z"],
+      ["request-retain03", "2026-10-14T11:50:00.000Z"]
+    ] as const) {
+      await store.executeOnce(
+        key,
+        idempotencyFingerprint({ key }),
+        createdAt,
+        async () => ({ ok: true })
+      );
+    }
+
+    expect(await store.get("request-retain01")).toBeNull();
+    expect((await store.probe()).entries).toBe(2);
+
+    now = Date.parse("2026-10-14T13:00:01.000Z");
+    expect(await store.get("request-retain02")).toBeNull();
+    expect(await store.get("request-retain03")).toBeNull();
+    expect((await store.probe()).entries).toBe(0);
+  });
+
+  it("rotates JSONL files without exceeding the archive limit", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akariya-jsonl-rotate-"));
+    const file = path.join(root, "audit.jsonl");
+    const store = new JsonlStore(
+      file,
+      z.object({ id: z.number(), text: z.string() }),
+      { maxBytes: 48, maxArchives: 2 }
+    );
+
+    for (let id = 1; id <= 6; id += 1) {
+      await store.append({ id, text: "xxxxxxxxxxxxxxxx" });
+    }
+
+    expect((await readdir(root)).filter((name) => name.startsWith("audit.jsonl")).sort())
+      .toEqual(["audit.jsonl", "audit.jsonl.1", "audit.jsonl.2"]);
+    expect((await store.probe()).archives).toBe(2);
   });
 
   it("fails closed when durable idempotency state is corrupt", async () => {

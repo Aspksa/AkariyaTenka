@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ComponentHealth } from "@akariya/core";
 import { JsonlStore } from "@akariya/persistence";
 import { capabilities, type AuditEvent, type AuditSink } from "@akariya/security";
 
@@ -28,7 +29,18 @@ const auditSchema: z.ZodType<AuditEvent> = z.object({
 
 export class FileAuditSink implements AuditSink {
   private readonly store: JsonlStore<AuditEvent>;
-  constructor(filePath: string) { this.store = new JsonlStore(filePath, auditSchema); }
+
+  constructor(filePath: string, maxBytes = 10 * 1024 * 1024, maxArchives = 5) {
+    this.store = new JsonlStore(filePath, auditSchema, { maxBytes, maxArchives });
+  }
+
   async emit(event: AuditEvent): Promise<void> { await this.store.append(event); }
   async flush(): Promise<void> { await this.store.flush(); }
+
+  async health(): Promise<ComponentHealth> {
+    const probe = await this.store.probe();
+    return probe.status === "ok"
+      ? { state: "started", recoverable: true }
+      : { state: "degraded", recoverable: true, lastError: probe.lastError ?? "Audit storage unavailable" };
+  }
 }
