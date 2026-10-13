@@ -2,7 +2,18 @@ import { mkdir, mkdtemp, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import type { AuditEvent, AuditSink } from "./audit.js";
 import { InMemoryAuditSink, ApprovalGate, SecurePathResolver } from "./index.js";
+
+class ToggleAuditSink implements AuditSink {
+  fail = false;
+  readonly events: AuditEvent[] = [];
+
+  async emit(event: AuditEvent): Promise<void> {
+    if (this.fail) throw new Error("audit unavailable");
+    this.events.push(structuredClone(event));
+  }
+}
 
 describe("approval gate", () => {
   it("binds a single-use approval to immutable arguments", async () => {
@@ -21,6 +32,16 @@ describe("approval gate", () => {
     const request = await gate.request(context, "write", ["write_local"], "write", { value: 1 });
     await gate.decide(request.id, true);
     expect(await gate.consume(request.id, context, "write", ["write_local"], { value: 1 })).toBe(true);
+    expect(await gate.consume(request.id, context, "write", ["write_local"], { value: 1 })).toBe(false);
+  });
+
+  it("fails closed when approval audit cannot be persisted", async () => {
+    const audit = new ToggleAuditSink();
+    const gate = new ApprovalGate(audit, 60_000);
+    const context = { correlationId: "corr-auditfail", actor: "user" };
+    const request = await gate.request(context, "write", ["write_local"], "write", { value: 1 });
+    audit.fail = true;
+    await expect(gate.decide(request.id, true)).rejects.toThrow("audit unavailable");
     expect(await gate.consume(request.id, context, "write", ["write_local"], { value: 1 })).toBe(false);
   });
 });
