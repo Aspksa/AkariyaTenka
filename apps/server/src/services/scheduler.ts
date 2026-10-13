@@ -1,4 +1,4 @@
-import { LifecycleAdapter, type ComponentHealth } from "@akariya/core";
+import { LifecycleAdapter, SystemClock, type Clock, type ComponentHealth } from "@akariya/core";
 
 export interface ScheduledJobOptions {
   readonly name: string;
@@ -22,6 +22,10 @@ export class Scheduler extends LifecycleAdapter {
   private readonly jobs = new Map<string, JobState>();
   private controller = new AbortController();
   private started = false;
+
+  constructor(private readonly clock: Clock = new SystemClock()) {
+    super();
+  }
 
   register(options: ScheduledJobOptions): void {
     if (this.started) throw new Error("Cannot register scheduler jobs after start");
@@ -74,7 +78,7 @@ export class Scheduler extends LifecycleAdapter {
         try {
           await state.options.run(this.controller.signal);
           state.runs += 1;
-          state.lastSuccess = new Date().toISOString();
+          state.lastSuccess = this.clock.now().toISOString();
           delete state.lastError;
           return;
         } catch (error) {
