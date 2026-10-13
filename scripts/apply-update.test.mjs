@@ -51,7 +51,7 @@ async function history(root) {
 
 test("safe update paths reject traversal, protected data and Windows reserved names", () => {
   const bad = [
-    "../secret", ".", ".env", ".env/key", "data/user.json", ".updates/ready.json", ".runtime/node.exe",
+    "../secret", ".", ".env", ".env.local", ".env.production", ".env/key", "data/user.json", ".updates/ready.json", ".runtime/node.exe",
     "node_modules/pkg/a.js", ".akariya-version", "C:/secret", "\\\\server\\share", "folder/CON.txt",
     "folder/PRN", "folder/COM9.log", "folder/LPT1", "folder/..", "folder/trailing.", "folder/trailing ",
     "folder/name:stream", "folder/que?stion",
