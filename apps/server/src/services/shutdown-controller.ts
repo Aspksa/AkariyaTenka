@@ -46,7 +46,6 @@ export class ShutdownController {
       this.logger.error("shutdown timeout exceeded", { reason, timeoutMs: this.timeoutMs });
       this.runtime.forceExit(forcedCode);
     }, this.timeoutMs);
-    timer.unref();
 
     const failures: string[] = [];
     for (const [name, operation] of [
