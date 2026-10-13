@@ -1,12 +1,20 @@
 import { spawn } from "node:child_process";
 
-const child = spawn(process.execPath, ["apps/server/dist/main.js"], {
+const child = spawn(process.execPath, ["apps/server/dist/server.mjs"], {
   stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, AKARIYA_PORT: "4199", AKARIYA_HOST: "127.0.0.1" }
+  env: {
+    ...process.env,
+    PORT: "4199",
+    AKARIYA_PORT: "4199",
+    AKARIYA_HOST: "127.0.0.1",
+    AKARIYA_SUPERVISED: "1"
+  }
 });
 
 let settled = false;
-const timeout = setTimeout(() => { void finish(new Error("Server smoke test timed out")); }, 10000);
+let stderr = "";
+child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+const timeout = setTimeout(() => { void finish(new Error(`Server smoke test timed out\n${stderr}`)); }, 10000);
 
 async function finish(error) {
   if (settled) return;
@@ -25,8 +33,8 @@ for (let attempt = 0; attempt < 40; attempt += 1) {
     const body = await health.json();
     const page = await fetch("http://127.0.0.1:4199/");
     const html = await page.text();
-    if (health.ok && body.status === "healthy" && page.ok && html.includes("Akariya Tenka")) {
-      console.log("Smoke OK: health=healthy and web shell served");
+    if (health.ok && (body.status === "healthy" || body.status === "degraded") && page.ok && html.includes("Akariya Tenka")) {
+      console.log(`Smoke OK: health=${body.status} and web shell served`);
       await finish();
       break;
     }

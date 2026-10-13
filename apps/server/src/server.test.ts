@@ -24,7 +24,7 @@ describe("HTTP skeleton", () => {
     await kernel.start();
     const health = new HealthService(kernel);
     const server = createHttpApplication(
-      { host: "127.0.0.1", port: 0, dataDir: webDist, webDist, logLevel: "silent" },
+      { host: "127.0.0.1", port: 0, dataDir: webDist, webDist, logLevel: "silent", supervised: false },
       { health: createHealthRoute(health) },
       new Logger("test", "silent")
     );
