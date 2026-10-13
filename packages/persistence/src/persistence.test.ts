@@ -8,6 +8,7 @@ import {
   FileIdempotencyStore,
   IdempotencyConflictError,
   JsonlStore,
+  SqliteIdempotencyStore,
   VersionedJsonStore,
   idempotencyFingerprint
 } from "./index.js";
