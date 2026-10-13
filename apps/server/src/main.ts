@@ -1,5 +1,6 @@
-import { Logger } from "@akariya/core";
-import { redactSecrets } from "@akariya/security";
+import { Logger, SystemClock } from "@akariya/core";
+import { createSecretRedactor } from "@akariya/security";
+import { AsyncLocalRequestContextScope } from "./adapters/request-context-scope.js";
 import { loadConfig } from "./bootstrap/config.js";
 import { createStorage } from "./bootstrap/storage.js";
 import { createSecurity } from "./bootstrap/security.js";
@@ -11,15 +12,17 @@ import { HealthService } from "./services/health-service.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const logger = new Logger("akariya", config.logLevel, undefined, redactSecrets);
+  const clock = new SystemClock();
+  const requestContext = new AsyncLocalRequestContextScope();
+  const logger = new Logger("akariya", config.logLevel, undefined, createSecretRedactor(process.env));
   const storage = await createStorage(config);
-  const security = createSecurity(storage.audit);
-  createAssistant(security.policy, security.approvals, storage.audit);
-  const modules = createModules();
+  const security = createSecurity(storage.audit, clock);
+  createAssistant(security.policy, security.approvals, storage.audit, clock);
+  const modules = createModules(clock);
   await modules.kernel.start();
 
-  const health = new HealthService(modules.kernel);
-  const server = createHttpApplication(config, { health: createHealthRoute(health) }, logger);
+  const health = new HealthService(modules.kernel, clock);
+  const server = createHttpApplication(config, { health: createHealthRoute(health) }, logger, requestContext);
   await new Promise<void>((resolve) => server.listen(config.port, config.host, resolve));
   logger.info("Akariya Tenka listening on http://" + config.host + ":" + config.port);
 
@@ -30,6 +33,7 @@ async function main(): Promise<void> {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await modules.kernel.stop();
     await storage.audit.flush();
+    await storage.idempotency.flush();
     process.exitCode = code;
   };
 
