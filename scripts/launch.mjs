@@ -275,6 +275,7 @@ async function fail(message) {
     } catch (error) {
       console.error(`[ERROR] Automatic rollback failed: ${error?.message ?? error}`);
     }
+    process.exit(1);
   }
   finish(1);
 }
