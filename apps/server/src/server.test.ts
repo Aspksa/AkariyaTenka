@@ -66,6 +66,36 @@ describe("HTTP skeleton", () => {
     await kernel.stop();
   });
 
+  it("allows only the supervised launcher token to request shutdown", async () => {
+    const webDist = await webFixture();
+    let shutdowns = 0;
+    const server = createHttpApplication(
+      {
+        ...config(webDist),
+        supervised: true,
+        supervisorToken: "0123456789abcdef0123456789abcdef"
+      },
+      {
+        health: async () => "{}",
+        supervisorShutdown: async () => { shutdowns += 1; }
+      },
+      new Logger("test", "silent")
+    );
+    const port = await listen(server);
+
+    const denied = await fetch("http://127.0.0.1:" + port + "/api/_supervisor/shutdown", { method: "POST" });
+    expect(denied.status).toBe(403);
+    expect(shutdowns).toBe(0);
+
+    const accepted = await fetch("http://127.0.0.1:" + port + "/api/_supervisor/shutdown", {
+      method: "POST",
+      headers: { authorization: "Bearer 0123456789abcdef0123456789abcdef" }
+    });
+    expect(accepted.status).toBe(202);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(shutdowns).toBe(1);
+  });
+
   it("reports recoverable storage failures as degraded health", async () => {
     const webDist = await webFixture();
     class Healthy extends LifecycleAdapter {
