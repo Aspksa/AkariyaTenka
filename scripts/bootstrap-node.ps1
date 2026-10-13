@@ -10,10 +10,11 @@ $ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 function Get-NodeArchitecture {
-  $archText = "$env:PROCESSOR_ARCHITECTURE $env:PROCESSOR_ARCHITEW6432".ToUpperInvariant()
-  if ($archText -match "ARM64") { return "arm64" }
-  if ($archText -match "AMD64|X86") { return "x64" }
-  throw "Unsupported Windows architecture: $archText"
+  $native = "$env:PROCESSOR_ARCHITEW6432".ToUpperInvariant()
+  $process = "$env:PROCESSOR_ARCHITECTURE".ToUpperInvariant()
+  if ($native -eq "ARM64" -or $process -eq "ARM64") { return "arm64" }
+  if ($native -eq "AMD64" -or $process -eq "AMD64") { return "x64" }
+  throw "Unsupported Windows architecture: $process"
 }
 
 $arch = Get-NodeArchitecture
