@@ -56,6 +56,4 @@ exit /b %RC%
 
 :check_runtime
 node -e "process.exit(Number(process.versions.node.split('.')[0])>=20?0:1)" >nul 2>&1
-if errorlevel 1 exit /b 1
-npm --version >nul 2>&1
 exit /b %ERRORLEVEL%
