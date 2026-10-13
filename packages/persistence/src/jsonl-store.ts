@@ -93,14 +93,14 @@ export class JsonlStore<T> {
   async flush(): Promise<void> { await this.queue.idle(); }
 
   private async readStream(limit?: number): Promise<readonly T[]> {
-    let stream;
+    const stream = createReadStream(this.filePath, { encoding: "utf8" });
     try {
-      stream = createReadStream(this.filePath, { encoding: "utf8" });
       await new Promise<void>((resolve, reject) => {
-        stream!.once("open", () => resolve());
-        stream!.once("error", reject);
+        stream.once("open", () => resolve());
+        stream.once("error", reject);
       });
     } catch (error) {
+      stream.destroy();
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
     }
