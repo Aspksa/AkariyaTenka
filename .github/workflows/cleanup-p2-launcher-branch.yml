@@ -1,0 +1,30 @@
+name: Cleanup merged launcher branch
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete merged launcher branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          branch="foundation/p2-launcher-supervisor"
+          encoded="${branch//\//%2F}"
+          status="$(curl -sS -o /tmp/delete-response -w "%{http_code}"             -X DELETE             -H "Accept: application/vnd.github+json"             -H "Authorization: Bearer $GH_TOKEN"             -H "X-GitHub-Api-Version: 2026-03-10"             "https://api.github.com/repos/$REPOSITORY/git/refs/heads/$encoded")"
+
+          if [[ "$status" != "204" && "$status" != "404" ]]; then
+            cat /tmp/delete-response
+            echo "Failed to delete $branch (HTTP $status)"
+            exit 1
+          fi
+          echo "$branch: deleted or already absent"
