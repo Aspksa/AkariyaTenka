@@ -344,9 +344,7 @@ async function main() {
   const forcedReinstall = process.env.AKARIYA_REINSTALL === "1";
   ensureDependencies({ force: forcedReinstall || touched });
 
-  if (updateApplied && !options.skipChecks) {
-    step("Typecheck/tests skipped because the prepared update was already validated in staging");
-  } else if (options.skipChecks) {
+  if (options.skipChecks) {
     warn("--skip-checks is active: typecheck and tests are intentionally skipped for this launch.");
   } else {
     runQualityChecks();
