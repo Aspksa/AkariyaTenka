@@ -42,7 +42,7 @@ export function safeUpdatePath(value) {
   const parts = value.split("/");
   return parts.every((segment) => {
     const lower = segment.toLowerCase();
-    const protectedEnvironmentFile = lower === ".env" || lower.startsWith(".env.");
+    const protectedEnvironmentFile = lower === ".env" || (lower.startsWith(".env.") && lower !== ".env.example");
     return segment.length > 0 && segment !== "." && segment !== ".." &&
       !PROTECTED_SEGMENTS.has(lower) && !protectedEnvironmentFile && !WINDOWS_RESERVED.test(segment) && !/[. ]$/.test(segment);
   });
