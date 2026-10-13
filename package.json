@@ -9,6 +9,7 @@
     "dev": "node scripts/dev.mjs",
     "build:ts": "tsc -b packages/core packages/contracts packages/persistence packages/security packages/assistant apps/server",
     "build": "npm run clean && npm run build:ts && npm run build -w @akariya/web",
+    "prestart": "npm run build",
     "start": "node apps/server/dist/main.js",
     "test": "vitest run",
     "typecheck": "tsc -b packages/core packages/contracts packages/persistence packages/security packages/assistant apps/server && tsc -p apps/web/tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",

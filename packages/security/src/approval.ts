@@ -60,11 +60,12 @@ export class ApprovalGate {
       createdAt,
       expiresAt: createdAt + this.ttlMs
     };
-    this.pending.set(request.id, { request, state: "pending" });
+
     await this.audit.emit({
       id: randomUUID(), timestamp: this.clock.now().toISOString(), correlationId: context.correlationId,
       actor: context.actor, operation, capabilities, decision: "requested"
     });
+    this.pending.set(request.id, { request, state: "pending" });
     return structuredClone(request);
   }
 
@@ -72,17 +73,18 @@ export class ApprovalGate {
     const entry = this.pending.get(id);
     if (!entry || entry.state !== "pending") return false;
     if (this.clock.nowMs() >= entry.request.expiresAt) {
-      this.pending.delete(id);
       await this.record(entry.request, "expired");
+      this.pending.delete(id);
       return false;
     }
     if (!approved) {
-      this.pending.delete(id);
       await this.record(entry.request, "denied");
+      this.pending.delete(id);
       return true;
     }
-    entry.state = "approved";
+
     await this.record(entry.request, "approved");
+    entry.state = "approved";
     return true;
   }
 
@@ -104,7 +106,9 @@ export class ApprovalGate {
   }
 
   list(): readonly ApprovalRequest[] {
-    return [...this.pending.values()].map(({ request }) => structuredClone(request));
+    return [...this.pending.values()]
+      .filter(({ request }) => this.clock.nowMs() < request.expiresAt)
+      .map(({ request }) => structuredClone(request));
   }
 
   private async record(request: ApprovalRequest, decision: "approved" | "denied" | "expired"): Promise<void> {

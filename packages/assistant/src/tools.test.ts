@@ -8,7 +8,7 @@ describe("tool execution", () => {
     const audit = new InMemoryAuditSink();
     const registry = new ToolRegistry();
     registry.register({
-      name: "read.echo", description: "echo", inputSchema: z.object({ text: z.string() }),
+      name: "read.echo", description: "echo", inputSchema: z.object({ text: z.string() }), outputSchema: z.string(),
       capabilities: ["read_local"], risk: "read", execute: async (input) => input.text
     });
     const executor = new ToolExecutor(registry, new DefaultSecurityPolicy(), new ApprovalGate(audit), audit);
@@ -16,12 +16,38 @@ describe("tool execution", () => {
     expect(result.status).toBe("denied");
   });
 
+  it("validates tool output before returning it", async () => {
+    const audit = new InMemoryAuditSink();
+    const registry = new ToolRegistry();
+    registry.register({
+      name: "read.invalid-output",
+      description: "invalid output fixture",
+      inputSchema: z.object({}).strict(),
+      outputSchema: z.object({ ok: z.boolean().refine((value) => value, "expected true") }).strict(),
+      capabilities: ["read_local"],
+      risk: "read",
+      execute: async () => ({ ok: false as const })
+    });
+    const executor = new ToolExecutor(registry, new DefaultSecurityPolicy(), new ApprovalGate(audit), audit);
+    await expect(executor.execute(
+      "read.invalid-output",
+      {},
+      { correlationId: "corr-output12", actor: "user" }
+    )).rejects.toMatchObject({ code: "INTEGRITY" });
+    expect(audit.list().at(-1)).toMatchObject({
+      operation: "read.invalid-output",
+      decision: "failed",
+      result: "failure",
+      details: { errorType: "AppError" }
+    });
+  });
+
   it("requires approval for side effects", async () => {
     const audit = new InMemoryAuditSink();
     const approvals = new ApprovalGate(audit);
     const registry = new ToolRegistry();
     registry.register({
-      name: "write.echo", description: "write", inputSchema: z.object({ text: z.string() }),
+      name: "write.echo", description: "write", inputSchema: z.object({ text: z.string() }), outputSchema: z.string(),
       capabilities: ["write_local"], risk: "write", execute: async (input) => input.text
     });
     const executor = new ToolExecutor(registry, new DefaultSecurityPolicy(), approvals, audit);

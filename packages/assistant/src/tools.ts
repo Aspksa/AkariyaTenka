@@ -1,4 +1,4 @@
-import type { RequestContext } from "@akariya/core";
+import { AppError, type RequestContext } from "@akariya/core";
 import type { ApprovalGate, AuditSink, Capability, Risk, SecurityPolicy } from "@akariya/security";
 import { randomUUID } from "node:crypto";
 import type { ZodType } from "zod";
@@ -7,6 +7,7 @@ export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: ZodType<TInput>;
+  readonly outputSchema: ZodType<TOutput>;
   readonly capabilities: readonly Capability[];
   readonly risk: Risk;
   execute(input: TInput, context: RequestContext): Promise<TOutput>;
@@ -16,6 +17,7 @@ interface RegisteredTool {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: ZodType<unknown>;
+  readonly outputSchema: ZodType<unknown>;
   readonly capabilities: readonly Capability[];
   readonly risk: Risk;
   execute(input: unknown, context: RequestContext): Promise<unknown>;
@@ -31,6 +33,7 @@ export class ToolRegistry {
       name: tool.name,
       description: tool.description,
       inputSchema: tool.inputSchema as ZodType<unknown>,
+      outputSchema: tool.outputSchema as ZodType<unknown>,
       capabilities: tool.capabilities,
       risk: tool.risk,
       execute: (input, context) => tool.execute(input as TInput, context)
@@ -74,17 +77,25 @@ export class ToolExecutor {
     }
 
     try {
-      const value = await tool.execute(parsed.data, context);
+      const rawOutput = await tool.execute(parsed.data, context);
+      const output = tool.outputSchema.safeParse(rawOutput);
+      if (!output.success) {
+        throw new AppError({
+          code: "INTEGRITY",
+          message: "Tool output failed runtime validation",
+          correlationId: context.correlationId
+        });
+      }
       await this.audit.emit({
         id: randomUUID(), timestamp: new Date().toISOString(), correlationId: context.correlationId,
         actor: context.actor, operation: tool.name, capabilities: tool.capabilities, decision: "executed", result: "success"
       });
-      return { status: "completed", value };
+      return { status: "completed", value: output.data };
     } catch (error) {
       await this.audit.emit({
         id: randomUUID(), timestamp: new Date().toISOString(), correlationId: context.correlationId,
         actor: context.actor, operation: tool.name, capabilities: tool.capabilities, decision: "failed", result: "failure",
-        details: { error: error instanceof Error ? error.message : String(error) }
+        details: { errorType: error instanceof Error ? error.name : "UnknownError" }
       });
       throw error;
     }
