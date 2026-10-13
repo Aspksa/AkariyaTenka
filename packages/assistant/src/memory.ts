@@ -65,13 +65,15 @@ export class InMemoryMemoryStore implements MemoryStore {
 
     return [...this.records.values()]
       .filter((record) => record.scope === scope)
-      .filter((record) => {
-        if (tokens.length === 0) return true;
-        const text = record.text.toLowerCase();
-        return tokens.every((token) => text.includes(token));
-      })
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id))
-      .slice(0, limit);
+      .map((record) => ({ record, score: memoryMatchScore(record.text, tokens) }))
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) =>
+        right.score - left.score
+        || right.record.updatedAt.localeCompare(left.record.updatedAt)
+        || left.record.id.localeCompare(right.record.id)
+      )
+      .slice(0, limit)
+      .map((entry) => entry.record);
   }
 
   async listRecent(scopeValue: string, limit = 20): Promise<readonly MemoryRecord[]> {
@@ -92,4 +94,14 @@ export class InMemoryMemoryStore implements MemoryStore {
 
 export function memoryQueryTokens(query: string): readonly string[] {
   return searchTokens(query);
+}
+
+export function memoryMatchScore(textValue: string, tokens: readonly string[]): number {
+  if (tokens.length === 0) return 1;
+  const text = textValue.toLowerCase();
+  let score = 0;
+  for (const token of tokens) {
+    if (text.includes(token)) score += 1;
+  }
+  return score;
 }
