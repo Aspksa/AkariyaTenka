@@ -1,4 +1,4 @@
-import { AppError, type RequestContextScope } from "@akariya/core";
+import { AppError, type AppErrorCode, type RequestContextScope } from "@akariya/core";
 
 export interface NetworkRequestOptions {
   readonly signal?: AbortSignal;
@@ -19,15 +19,23 @@ export class NetworkClient {
 
   async fetch(url: URL, init: RequestInit = {}, options: NetworkRequestOptions = {}): Promise<Response> {
     const retries = options.retries ?? 2;
+    const timeoutMs = options.timeoutMs ?? 10_000;
     const maxResponseBytes = options.maxResponseBytes ?? 5_000_000;
+
+    if (!Number.isSafeInteger(retries) || retries < 0 || retries > 10) {
+      throw this.error("VALIDATION", "retries must be an integer between 0 and 10");
+    }
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+      throw this.error("VALIDATION", "timeoutMs must be a positive safe integer");
+    }
     if (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 0) {
-      throw new AppError({ code: "VALIDATION", message: "maxResponseBytes must be a non-negative safe integer" });
+      throw this.error("VALIDATION", "maxResponseBytes must be a non-negative safe integer");
     }
 
     let lastError: unknown;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(new Error("External request timed out")), options.timeoutMs ?? 10_000);
+      const timeout = setTimeout(() => controller.abort(new Error("External request timed out")), timeoutMs);
       const abort = () => controller.abort(options.signal?.reason);
       if (options.signal?.aborted) controller.abort(options.signal.reason);
       else options.signal?.addEventListener("abort", abort, { once: true });
@@ -38,23 +46,48 @@ export class NetworkClient {
         if (correlationId !== undefined && !headers.has("x-correlation-id")) {
           headers.set("x-correlation-id", correlationId);
         }
+
         const response = await fetch(url, { ...init, headers, signal: controller.signal });
         const lengthHeader = response.headers.get("content-length");
         if (lengthHeader !== null) {
           const length = Number(lengthHeader);
-          if (Number.isFinite(length) && length > maxResponseBytes) throw new ResponseTooLargeError();
+          if (Number.isFinite(length) && length > maxResponseBytes) {
+            await response.body?.cancel().catch(() => {});
+            throw new ResponseTooLargeError();
+          }
         }
 
-        if ((response.status === 429 || response.status >= 500) && attempt < retries) {
+        const retryableStatus = response.status === 429 || response.status >= 500;
+        if (retryableStatus && attempt < retries) {
           await response.body?.cancel().catch(() => {});
           await this.backoff(attempt, options.signal);
           continue;
         }
 
-        return await this.bufferWithinLimit(response, maxResponseBytes);
+        const buffered = await this.bufferWithinLimit(response, maxResponseBytes);
+        if (buffered.status === 429) {
+          const retryAfter = buffered.headers.get("retry-after");
+          throw this.error(
+            "RATE_LIMIT",
+            "External service rate limited the request",
+            undefined,
+            retryAfter === null ? undefined : { retryAfter }
+          );
+        }
+        if (buffered.status >= 500) {
+          throw this.error("EXTERNAL_SERVICE", "External service returned HTTP " + buffered.status);
+        }
+        return buffered;
       } catch (error) {
         lastError = error;
-        if (error instanceof ResponseTooLargeError || attempt >= retries || options.signal?.aborted) break;
+        if (
+          error instanceof AppError ||
+          error instanceof ResponseTooLargeError ||
+          attempt >= retries ||
+          options.signal?.aborted
+        ) {
+          break;
+        }
         await this.backoff(attempt, options.signal);
       } finally {
         clearTimeout(timeout);
@@ -62,10 +95,11 @@ export class NetworkClient {
       }
     }
 
+    if (lastError instanceof AppError) throw lastError;
     if (lastError instanceof ResponseTooLargeError) {
-      throw new AppError({ code: "EXTERNAL_SERVICE", message: lastError.message, cause: lastError });
+      throw this.error("EXTERNAL_SERVICE", lastError.message, lastError, { kind: "response_too_large" });
     }
-    throw new AppError({ code: "EXTERNAL_SERVICE", message: "External request failed", cause: lastError });
+    throw this.error("EXTERNAL_SERVICE", "External request failed", lastError);
   }
 
   private async bufferWithinLimit(response: Response, maxBytes: number): Promise<Response> {
@@ -116,6 +150,22 @@ export class NetworkClient {
         resolve();
       }, delay);
       signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  private error(
+    code: AppErrorCode,
+    message: string,
+    cause?: unknown,
+    details?: Readonly<Record<string, unknown>>
+  ): AppError {
+    const correlationId = this.requestContext?.current()?.correlationId;
+    return new AppError({
+      code,
+      message,
+      ...(correlationId === undefined ? {} : { correlationId }),
+      ...(cause === undefined ? {} : { cause }),
+      ...(details === undefined ? {} : { details })
     });
   }
 }
