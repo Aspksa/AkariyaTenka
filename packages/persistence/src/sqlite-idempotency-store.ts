@@ -79,7 +79,7 @@ export class SqliteIdempotencyStore<T> implements IdempotencyStore<T> {
     `);
 
     const store = new SqliteIdempotencyStore(db, valueSchema, ttlMs, maxEntries, nowMs);
-    await store.queue.run(() => store.compact());
+    await store.queue.run(async () => { store.compact(); });
     return store;
   }
 
