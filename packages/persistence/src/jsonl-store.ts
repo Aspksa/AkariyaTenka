@@ -1,5 +1,7 @@
-import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { mkdir, open, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
+import { createInterface } from "node:readline";
 import type { ZodType } from "zod";
 import { SerializedQueue } from "./serialized-queue.js";
 
@@ -52,21 +54,12 @@ export class JsonlStore<T> {
   }
 
   readAll(): Promise<readonly T[]> {
-    return this.queue.run(async () => {
-      let text: string;
-      try { text = await readFile(this.filePath, "utf8"); }
-      catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-        throw error;
-      }
-      const output: T[] = [];
-      for (const line of text.split(/\r?\n/u)) {
-        if (!line) continue;
-        const value: unknown = JSON.parse(line);
-        output.push(this.schema.parse(value));
-      }
-      return output;
-    });
+    return this.queue.run(() => this.readStream());
+  }
+
+  readRecent(limit: number): Promise<readonly T[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1) throw new Error("JSONL read limit must be a positive safe integer");
+    return this.queue.run(() => this.readStream(limit));
   }
 
   probe(): Promise<JsonlProbe> {
@@ -98,6 +91,40 @@ export class JsonlStore<T> {
   }
 
   async flush(): Promise<void> { await this.queue.idle(); }
+
+  private async readStream(limit?: number): Promise<readonly T[]> {
+    let stream;
+    try {
+      stream = createReadStream(this.filePath, { encoding: "utf8" });
+      await new Promise<void>((resolve, reject) => {
+        stream!.once("open", () => resolve());
+        stream!.once("error", reject);
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+
+    const lines = createInterface({ input: stream, crlfDelay: Infinity });
+    const output: T[] = [];
+    try {
+      for await (const line of lines) {
+        if (!line) continue;
+        const value: unknown = JSON.parse(line);
+        const safe = this.schema.parse(value);
+        if (limit === undefined) {
+          output.push(safe);
+        } else {
+          if (output.length === limit) output.shift();
+          output.push(safe);
+        }
+      }
+      return output;
+    } finally {
+      lines.close();
+      stream.destroy();
+    }
+  }
 
   private async rotateIfNeeded(incomingBytes: number): Promise<void> {
     let currentBytes = 0;
