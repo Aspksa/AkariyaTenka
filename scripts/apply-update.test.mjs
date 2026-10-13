@@ -58,6 +58,7 @@ test("safe update paths reject traversal, protected data and Windows reserved na
   ];
   for (const candidate of bad) assert.equal(safeUpdatePath(candidate), false, candidate);
   assert.equal(safeUpdatePath("apps/web/src/main.ts"), true);
+  assert.equal(safeUpdatePath(".env.example"), true);
 });
 
 test("duplicate manifest paths are rejected before installation", async () => {
