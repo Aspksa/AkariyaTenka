@@ -25,9 +25,24 @@ jobs:
           node-version: "20"
           cache: npm
       - name: Install
-        run: npm ci
+        run: npm ci --no-audit --no-fund --ignore-scripts
       - name: Launcher syntax
         run: node --check scripts/launch.mjs && node --check scripts/apply-update.mjs && node --check scripts/build-server.mjs && node --check scripts/workspace-health.mjs
+      - name: PowerShell bootstrap syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path "scripts/bootstrap-node.ps1"),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
       - name: Typecheck
         run: npm run typecheck
       - name: Test
