@@ -1,4 +1,4 @@
-import { AppError } from "@akariya/core";
+import { AppError, type RequestContextScope } from "@akariya/core";
 
 export interface NetworkRequestOptions {
   readonly signal?: AbortSignal;
@@ -15,6 +15,8 @@ class ResponseTooLargeError extends Error {
 }
 
 export class NetworkClient {
+  constructor(private readonly requestContext?: RequestContextScope) {}
+
   async fetch(url: URL, init: RequestInit = {}, options: NetworkRequestOptions = {}): Promise<Response> {
     const retries = options.retries ?? 2;
     const maxResponseBytes = options.maxResponseBytes ?? 5_000_000;
@@ -31,7 +33,12 @@ export class NetworkClient {
       else options.signal?.addEventListener("abort", abort, { once: true });
 
       try {
-        const response = await fetch(url, { ...init, signal: controller.signal });
+        const headers = new Headers(init.headers);
+        const correlationId = this.requestContext?.current()?.correlationId;
+        if (correlationId !== undefined && !headers.has("x-correlation-id")) {
+          headers.set("x-correlation-id", correlationId);
+        }
+        const response = await fetch(url, { ...init, headers, signal: controller.signal });
         const lengthHeader = response.headers.get("content-length");
         if (lengthHeader !== null) {
           const length = Number(lengthHeader);
