@@ -1,7 +1,13 @@
 import { env } from "node:process";
+import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@akariya/contracts": fileURLToPath(new URL("../../packages/contracts/src/index.ts", import.meta.url))
+    }
+  },
   server: {
     host: "127.0.0.1",
     port: 5173,
