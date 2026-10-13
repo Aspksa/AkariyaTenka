@@ -45,7 +45,7 @@ jobs:
           )
       - name: Generate CycloneDX SBOM
         shell: bash
-        run: npm run sbom > release/AkariyaTenka.sbom.cdx.json
+        run: npm sbom --sbom-format=cyclonedx --sbom-type=application > release/AkariyaTenka.sbom.cdx.json
       - name: Generate SHA-256
         shell: bash
         run: |
