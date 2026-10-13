@@ -442,22 +442,35 @@ async function main() {
   if (!Number.isInteger(major) || major < 20) throw new Error(`Node.js 20+ is required; found ${process.version}`);
 
   const touched = await prepareInstallation();
-  const forcedReinstall = process.env.AKARIYA_REINSTALL === "1";
-  ensureDependencies({ force: forcedReinstall || touched });
+  const prebuilt = options.dev ? null : await verifyPrebuilt(root);
 
-  if (options.skipChecks) {
-    warn("--skip-checks is active: typecheck and tests are intentionally skipped for this launch.");
+  if (prebuilt !== null) {
+    step(`Verified prebuilt release ${prebuilt.sourceSha.slice(0, 12)} (${prebuilt.artifacts.length} artifacts)`);
   } else {
-    runQualityChecks();
-  }
+    const forcedReinstall = process.env.AKARIYA_REINSTALL === "1";
+    ensureDependencies({ force: forcedReinstall || touched });
 
-  runBuilds();
+    if (options.skipChecks) {
+      warn("--skip-checks is active: typecheck and tests are intentionally skipped for this launch.");
+    } else {
+      runQualityChecks();
+    }
+
+    runBuilds();
+  }
 
   const backendPort = await findPort(requestedPort);
   currentPort = backendPort;
   const backendUrl = `http://127.0.0.1:${backendPort}/`;
   step(`Starting backend on ${backendUrl}`);
-  const backendEnv = { ...process.env, PORT: String(backendPort), AKARIYA_PORT: String(backendPort), AKARIYA_HOST: "127.0.0.1", AKARIYA_SUPERVISED: "1" };
+  const backendEnv = {
+    ...process.env,
+    PORT: String(backendPort),
+    AKARIYA_PORT: String(backendPort),
+    AKARIYA_HOST: "127.0.0.1",
+    AKARIYA_SUPERVISED: "1",
+    AKARIYA_SUPERVISOR_TOKEN: supervisorToken
+  };
   delete backendEnv.AKARIYA_REINSTALL;
   spawnManaged("backend", process.execPath, [path.join(root, "apps", "server", "dist", "server.mjs")], { env: backendEnv });
 
@@ -481,7 +494,9 @@ async function main() {
 
   serverReady = true;
   if (updateApplied) await confirmUpdate(root);
+  const startupMs = Math.round(performance.now() - launcherStartedAt);
   console.log(`\n\x1b[32mAkariya Tenka работает: ${openUrl}\x1b[0m`);
+  console.log(`Startup: ${startupMs} ms${prebuilt === null ? " (source mode)" : " (verified prebuilt)"}`);
   console.log("Ctrl+C — остановить");
   if (!options.noOpen && !smokeMode) openBrowser(openUrl);
   if (smokeMode) finish(0);
