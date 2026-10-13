@@ -23,7 +23,8 @@
     "smoke": "node scripts/smoke.mjs",
     "clean": "node scripts/clean.mjs",
     "security:audit": "npm audit --omit=dev --audit-level=high",
-    "sbom": "npm sbom --sbom-format cyclonedx --sbom-type application"
+    "sbom": "npm sbom --sbom-format cyclonedx --sbom-type application",
+    "perf:budget": "node scripts/performance-budget.mjs"
   },
   "dependencies": {
     "zod": "^4.1.12"
