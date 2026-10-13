@@ -1,4 +1,4 @@
-import { brotliCompress, gzip } from "node:zlib";
+import { brotliCompress, constants, gzip } from "node:zlib";
 import { promisify } from "node:util";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -36,8 +36,8 @@ export async function compressWebDist(root) {
     const [br, gz] = await Promise.all([
       brotli(bytes, {
         params: {
-          0x100: 11,
-          0x101: 22
+          [constants.BROTLI_PARAM_QUALITY]: 11,
+          [constants.BROTLI_PARAM_SIZE_HINT]: bytes.length
         }
       }),
       gzipAsync(bytes, { level: 9 })
