@@ -40,7 +40,14 @@ try {
   $expected = (($checksumLine.Trim() -split "\s+")[0]).ToLowerInvariant()
   if ($expected -notmatch "^[0-9a-f]{64}$") { throw "Official checksum entry for $archive is invalid." }
 
-  $actual = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $stream = [IO.File]::OpenRead($zipPath)
+  try {
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try { $hashBytes = $sha256.ComputeHash($stream) }
+    finally { $sha256.Dispose() }
+  }
+  finally { $stream.Dispose() }
+  $actual = -join ($hashBytes | ForEach-Object { $_.ToString("x2") })
   if ($actual -ne $expected) {
     Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
     throw "SHA-256 checksum mismatch. The downloaded archive was deleted."
