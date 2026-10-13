@@ -1,0 +1,15 @@
+{
+  "name":"@akariya/server",
+  "version":"0.1.0",
+  "private":true,
+  "type":"module",
+  "scripts":{"dev":"node --watch dist/main.js"},
+  "dependencies":{
+    "@akariya/assistant":"*",
+    "@akariya/contracts":"*",
+    "@akariya/core":"*",
+    "@akariya/persistence":"*",
+    "@akariya/security":"*",
+    "zod":"^4.1.12"
+  }
+}
