@@ -1,0 +1,136 @@
+name: Akariya Tenka Release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/release.yml"
+      - "AKARIYA.bat"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - "apps/**"
+      - "packages/**"
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install without lifecycle scripts
+        run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: Full quality gate
+        run: npm run check
+      - name: Create release tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release/root
+          git archive --format=tar HEAD | tar -xf - -C release/root
+          printf '%s\n' "$GITHUB_SHA" > release/root/.akariya-version
+          (
+            cd release/root
+            zip -q -r ../AkariyaTenka.zip .
+          )
+      - name: Generate CycloneDX SBOM
+        shell: bash
+        run: npm run sbom > release/AkariyaTenka.sbom.cdx.json
+      - name: Generate SHA-256
+        shell: bash
+        run: |
+          cd release
+          sha256sum AkariyaTenka.zip > AkariyaTenka.zip.sha256
+      - name: Upload release candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: akariya-release-candidate
+          path: |
+            release/AkariyaTenka.zip
+            release/AkariyaTenka.zip.sha256
+            release/AkariyaTenka.sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-windows:
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: akariya-release-candidate
+          path: release
+      - name: Verify checksum and SBOM
+        shell: pwsh
+        run: |
+          $zip = Resolve-Path "release\AkariyaTenka.zip"
+          $expected = ((Get-Content "release\AkariyaTenka.zip.sha256" -Raw).Trim() -split "\s+")[0].ToLowerInvariant()
+          $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Release ZIP SHA-256 mismatch" }
+          $null = Get-Content "release\AkariyaTenka.sbom.cdx.json" -Raw | ConvertFrom-Json
+      - name: Fresh release ZIP BAT smoke
+        shell: pwsh
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP "Akariya Tenka Release Smoke"
+          if (Test-Path $destination) { Remove-Item $destination -Recurse -Force }
+          Expand-Archive -LiteralPath "release\AkariyaTenka.zip" -DestinationPath $destination -Force
+
+          $marker = (Get-Content (Join-Path $destination ".akariya-version") -Raw).Trim()
+          if ($marker -ne $env:GITHUB_SHA) { throw "Release version marker mismatch" }
+
+          $system32 = Join-Path $env:SystemRoot "System32"
+          $env:PATH = "$system32;$env:SystemRoot;$(Join-Path $system32 'WindowsPowerShell\v1.0')"
+          $env:AKARIYA_LAUNCHER_SMOKE = "1"
+
+          Push-Location $env:RUNNER_TEMP
+          try {
+            & (Join-Path $destination "AKARIYA.bat") --no-open --skip-checks --port 4573
+            if ($LASTEXITCODE -ne 0) { throw "Release AKARIYA.bat failed with exit code $LASTEXITCODE" }
+            $portableNode = Join-Path $destination ".runtime\node\node.exe"
+            if (-not (Test-Path $portableNode)) { throw "Portable Node.js was not installed" }
+            & $portableNode -e "process.exit(process.versions.node === '22.23.3' ? 0 : 1)"
+            if ($LASTEXITCODE -ne 0) { throw "Portable Node.js version verification failed" }
+          }
+          finally {
+            Pop-Location
+          }
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [package, verify-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: akariya-release-candidate
+          path: release
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: release/AkariyaTenka.zip
+      - name: Attest SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: release/AkariyaTenka.zip
+          sbom-path: release/AkariyaTenka.sbom.cdx.json
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME"             release/AkariyaTenka.zip             release/AkariyaTenka.zip.sha256             release/AkariyaTenka.sbom.cdx.json             --verify-tag             --generate-notes             --title "Akariya Tenka $GITHUB_REF_NAME"
