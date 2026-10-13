@@ -39,6 +39,7 @@ function parseArgs(argv) {
 
 const args = process.argv.slice(2);
 const options = parseArgs(args);
+const smokeMode = process.env.AKARIYA_LAUNCHER_SMOKE === "1";
 const requestedPort = options.port ?? 4173;
 const bin = (...parts) => path.join(root, "node_modules", ...parts);
 const step = (message) => console.log(`\n\x1b[36m==> ${message}\x1b[0m`);
@@ -382,7 +383,8 @@ async function main() {
   if (updateApplied) await confirmUpdate(root);
   console.log(`\n\x1b[32mAkariya Tenka работает: ${openUrl}\x1b[0m`);
   console.log("Ctrl+C — остановить");
-  if (!options.noOpen) openBrowser(openUrl);
+  if (!options.noOpen && !smokeMode) openBrowser(openUrl);
+  if (smokeMode) finish(0);
 }
 
 main().catch((error) => { void fail(error instanceof Error ? error.message : String(error)); });
