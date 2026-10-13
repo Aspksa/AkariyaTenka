@@ -2,7 +2,7 @@ import { z } from "zod";
 import { JsonlStore } from "@akariya/persistence";
 import { capabilities, type AuditEvent, type AuditSink } from "@akariya/security";
 
-const auditSchema = z.object({
+const auditSchema: z.ZodType<AuditEvent> = z.object({
   id: z.string(),
   timestamp: z.string(),
   correlationId: z.string(),
@@ -12,7 +12,17 @@ const auditSchema = z.object({
   decision: z.enum(["requested", "approved", "denied", "expired", "executed", "failed"]),
   result: z.enum(["success", "failure"]).optional(),
   details: z.record(z.string(), z.unknown()).optional()
-}) satisfies z.ZodType<AuditEvent>;
+}).transform((value): AuditEvent => ({
+  id: value.id,
+  timestamp: value.timestamp,
+  correlationId: value.correlationId,
+  actor: value.actor,
+  operation: value.operation,
+  capabilities: value.capabilities,
+  decision: value.decision,
+  ...(value.result === undefined ? {} : { result: value.result }),
+  ...(value.details === undefined ? {} : { details: value.details })
+}));
 
 export class FileAuditSink implements AuditSink {
   private readonly store: JsonlStore<AuditEvent>;
