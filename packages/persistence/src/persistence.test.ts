@@ -8,6 +8,7 @@ import {
   FileIdempotencyStore,
   IdempotencyConflictError,
   JsonlStore,
+  SqliteIdempotencyStore,
   VersionedJsonStore,
   idempotencyFingerprint
 } from "./index.js";
@@ -179,5 +180,50 @@ describe("persistence", () => {
       async () => ({ ok: true })
     )).rejects.toThrow(/degraded/i);
     expect((await readdir(root)).some((name) => name.startsWith("idempotency.json.corrupt-"))).toBe(true);
+  });
+});
+
+
+describe("SQLite WAL idempotency", () => {
+  const nodeMajor = Number(process.versions.node.split(".")[0]);
+  const sqliteIt = nodeMajor >= 22 ? it : it.skip;
+
+  sqliteIt("uses WAL and indexed replay without rewriting JSON state", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akariya-sqlite-"));
+    const file = path.join(root, "runtime.sqlite");
+    const store = await SqliteIdempotencyStore.open(
+      file,
+      z.object({ value: z.number().int() }),
+      { ttlMs: 60_000, maxEntries: 100 }
+    );
+    let executions = 0;
+    const key = "request-sqlite01";
+    const fingerprint = idempotencyFingerprint({ value: 7 });
+    const first = await store.executeOnce(
+      key,
+      fingerprint,
+      new Date().toISOString(),
+      async () => {
+        executions += 1;
+        return { value: 7 };
+      }
+    );
+    const replay = await store.executeOnce(
+      key,
+      fingerprint,
+      first.record.createdAt,
+      async () => {
+        executions += 1;
+        return { value: 8 };
+      }
+    );
+
+    expect(first.replayed).toBe(false);
+    expect(replay.replayed).toBe(true);
+    expect(replay.record.value).toEqual({ value: 7 });
+    expect(executions).toBe(1);
+    expect(await store.probe()).toMatchObject({ status: "ok", backend: "sqlite-wal", entries: 1 });
+    await store.close();
+    expect(await readFile(file)).toBeInstanceOf(Buffer);
   });
 });

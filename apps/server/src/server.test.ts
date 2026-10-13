@@ -66,6 +66,63 @@ describe("HTTP skeleton", () => {
     await kernel.stop();
   });
 
+  it("allows only the supervised launcher token to request shutdown", async () => {
+    const webDist = await webFixture();
+    let shutdowns = 0;
+    const server = createHttpApplication(
+      {
+        ...config(webDist),
+        supervised: true,
+        supervisorToken: "0123456789abcdef0123456789abcdef"
+      },
+      {
+        health: async () => "{}",
+        supervisorShutdown: async () => { shutdowns += 1; }
+      },
+      new Logger("test", "silent")
+    );
+    const port = await listen(server);
+
+    const denied = await fetch("http://127.0.0.1:" + port + "/api/_supervisor/shutdown", { method: "POST" });
+    expect(denied.status).toBe(403);
+    expect(shutdowns).toBe(0);
+
+    const accepted = await fetch("http://127.0.0.1:" + port + "/api/_supervisor/shutdown", {
+      method: "POST",
+      headers: { authorization: "Bearer 0123456789abcdef0123456789abcdef" }
+    });
+    expect(accepted.status).toBe(202);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(shutdowns).toBe(1);
+  });
+
+  it("serves local performance metrics without secrets", async () => {
+    const webDist = await webFixture();
+    const server = createHttpApplication(
+      config(webDist),
+      {
+        health: async () => "{}",
+        performance: async (context) => JSON.stringify({
+          timestamp: "2026-10-14T00:00:00.000Z",
+          correlationId: context.correlationId,
+          uptimeMs: 1,
+          memory: { rssBytes: 1, heapUsedBytes: 1, heapTotalBytes: 1 },
+          eventLoop: { meanMs: 0, p95Ms: 0, maxMs: 0 },
+          metrics: {}
+        })
+      },
+      new Logger("test", "silent")
+    );
+    const port = await listen(server);
+    const response = await fetch("http://127.0.0.1:" + port + "/api/performance", {
+      headers: { "x-correlation-id": "corr-performance-1234" }
+    });
+    const body = await response.json() as { correlationId?: string; memory?: { rssBytes?: number } };
+    expect(response.status).toBe(200);
+    expect(body.correlationId).toBe("corr-performance-1234");
+    expect(body.memory?.rssBytes).toBe(1);
+  });
+
   it("reports recoverable storage failures as degraded health", async () => {
     const webDist = await webFixture();
     class Healthy extends LifecycleAdapter {

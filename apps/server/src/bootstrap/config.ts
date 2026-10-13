@@ -14,6 +14,7 @@ const envSchema = z.object({
   AKARIYA_WEB_DIST: z.string().min(1).default("./apps/web/dist"),
   AKARIYA_LOG_LEVEL: z.enum(["debug", "info", "warn", "error", "silent"]).default("info"),
   AKARIYA_SUPERVISED: z.enum(["0", "1"]).default("0"),
+  AKARIYA_SUPERVISOR_TOKEN: z.string().min(32).max(256).optional(),
   AKARIYA_IDEMPOTENCY_TTL_HOURS: positiveInteger.default(168),
   AKARIYA_IDEMPOTENCY_MAX_ENTRIES: positiveInteger.default(10000),
   AKARIYA_AUDIT_MAX_BYTES: positiveInteger.default(10 * 1024 * 1024),
@@ -28,6 +29,7 @@ export interface AppConfig {
   readonly webDist: string;
   readonly logLevel: LogLevel;
   readonly supervised: boolean;
+  readonly supervisorToken?: string;
   readonly idempotencyTtlMs: number;
   readonly idempotencyMaxEntries: number;
   readonly auditMaxBytes: number;
@@ -44,6 +46,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, cwd = process.c
     webDist: path.resolve(cwd, parsed.AKARIYA_WEB_DIST),
     logLevel: parsed.AKARIYA_LOG_LEVEL,
     supervised: parsed.AKARIYA_SUPERVISED === "1",
+    ...(parsed.AKARIYA_SUPERVISOR_TOKEN === undefined ? {} : { supervisorToken: parsed.AKARIYA_SUPERVISOR_TOKEN }),
     idempotencyTtlMs: parsed.AKARIYA_IDEMPOTENCY_TTL_HOURS * 60 * 60 * 1000,
     idempotencyMaxEntries: parsed.AKARIYA_IDEMPOTENCY_MAX_ENTRIES,
     auditMaxBytes: parsed.AKARIYA_AUDIT_MAX_BYTES,

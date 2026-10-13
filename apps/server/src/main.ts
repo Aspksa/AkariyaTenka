@@ -1,3 +1,4 @@
+import { performance } from "node:perf_hooks";
 import { Logger, SystemClock, toError } from "@akariya/core";
 import { createSecretRedactor } from "@akariya/security";
 import { AsyncLocalRequestContextScope } from "./adapters/request-context-scope.js";
@@ -8,10 +9,12 @@ import { createAssistant } from "./bootstrap/assistant.js";
 import { createModules } from "./bootstrap/modules.js";
 import { createHttpApplication } from "./bootstrap/server.js";
 import { createHealthRoute } from "./routes/health.js";
+import { createPerformanceRoute } from "./routes/performance.js";
 import { HealthService } from "./services/health-service.js";
 import { ShutdownController } from "./services/shutdown-controller.js";
 
 async function main(): Promise<void> {
+  const startupStartedAt = performance.now();
   const config = loadConfig();
   const clock = new SystemClock();
   const requestContext = new AsyncLocalRequestContextScope();
@@ -36,8 +39,19 @@ async function main(): Promise<void> {
     }
   });
 
-  const server = createHttpApplication(config, { health: createHealthRoute(health) }, logger, requestContext);
+  let requestSupervisorShutdown: (() => void) | undefined;
+  const server = createHttpApplication(
+    config,
+    {
+      health: createHealthRoute(health),
+      performance: createPerformanceRoute(modules.metrics),
+      supervisorShutdown: async () => { requestSupervisorShutdown?.(); }
+    },
+    logger,
+    requestContext
+  );
   await new Promise<void>((resolve) => server.listen(config.port, config.host, resolve));
+  modules.metrics.observe("server.startup_ms", performance.now() - startupStartedAt);
   logger.info("Akariya Tenka listening on http://" + config.host + ":" + config.port);
 
   const shutdown = new ShutdownController(
@@ -51,6 +65,8 @@ async function main(): Promise<void> {
       }
     }
   );
+
+  requestSupervisorShutdown = () => { void shutdown.shutdown(0, "supervisor"); };
 
   const crash = (kind: string, reason: unknown): void => {
     const error = toError(reason);

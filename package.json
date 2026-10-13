@@ -16,14 +16,15 @@
     "build:server": "node scripts/build-server.mjs",
     "build": "npm run clean && npm run build:ts && npm run build:server && npm run build -w @akariya/web",
     "start": "node scripts/launch.mjs",
-    "test:launcher": "node --test scripts/workspace-health.test.mjs scripts/apply-update.test.mjs",
+    "test:launcher": "node --test scripts/workspace-health.test.mjs scripts/apply-update.test.mjs scripts/prebuilt.test.mjs",
     "test": "npm run test:launcher && vitest run",
     "typecheck": "tsc -b packages/core packages/contracts packages/persistence packages/security packages/assistant apps/server && tsc -p apps/web/tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
     "check": "npm run typecheck && npm test && npm run build",
     "smoke": "node scripts/smoke.mjs",
     "clean": "node scripts/clean.mjs",
     "security:audit": "npm audit --omit=dev --audit-level=high",
-    "sbom": "npm sbom --sbom-format cyclonedx --sbom-type application"
+    "sbom": "npm sbom --sbom-format cyclonedx --sbom-type application",
+    "perf:budget": "node scripts/performance-budget.mjs"
   },
   "dependencies": {
     "zod": "^4.1.12"

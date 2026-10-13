@@ -1,11 +1,13 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { performance } from "node:perf_hooks";
 import { applyPreparedUpdate, applyRollbackRequest, confirmUpdate, rollbackFailedStart } from "./apply-update.mjs";
 import { inspectWorkspaceLinks } from "./workspace-health.mjs";
+import { verifyPrebuilt } from "./prebuilt.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(script), "..");
@@ -13,7 +15,12 @@ const RESTART_CODE = 75;
 const STARTUP_TIMEOUT_MS = 30_000;
 const READY_POLL_MS = 300;
 const MAX_PORT_ATTEMPTS = 100;
+const GRACEFUL_CHILD_TIMEOUT_MS = 5_000;
+const CRASH_WINDOW_MS = 60_000;
+const MAX_CRASH_RESTARTS = 3;
 const children = new Map();
+const supervisorToken = randomBytes(32).toString("hex");
+const launcherStartedAt = performance.now();
 let ending = false;
 let serverReady = false;
 let updateApplied = false;
@@ -73,20 +80,65 @@ function killProcessTree(child) {
   }
 }
 
-function killChildren() {
-  for (const child of children.keys()) killProcessTree(child);
+function childFor(label) {
+  for (const [child, childLabel] of children.entries()) {
+    if (childLabel === label) return child;
+  }
+  return undefined;
+}
+
+function waitForChildExit(child, timeoutMs) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      child.removeListener("exit", onExit);
+      resolve(false);
+    }, timeoutMs);
+    const onExit = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    child.once("exit", onExit);
+  });
+}
+
+async function requestBackendShutdown() {
+  if (!currentPort) return false;
+  try {
+    const response = await fetch(`http://127.0.0.1:${currentPort}/api/_supervisor/shutdown`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${supervisorToken}` },
+      signal: AbortSignal.timeout(1_500)
+    });
+    return response.status === 202 || response.status === 204;
+  } catch {
+    return false;
+  }
+}
+
+async function stopChildrenGracefully() {
+  const backend = childFor("backend");
+  if (backend) {
+    await requestBackendShutdown();
+    const exited = await waitForChildExit(backend, GRACEFUL_CHILD_TIMEOUT_MS);
+    if (!exited) killProcessTree(backend);
+  }
+
+  for (const [child, label] of [...children.entries()]) {
+    if (label !== "backend") killProcessTree(child);
+  }
   children.clear();
 }
 
-function finish(code = 0) {
+async function finish(code = 0) {
   if (ending) return;
   ending = true;
-  killChildren();
+  await stopChildrenGracefully();
   process.exit(code);
 }
 
-process.once("SIGINT", () => finish(0));
-process.once("SIGTERM", () => finish(0));
+process.once("SIGINT", () => { void finish(0); });
+process.once("SIGTERM", () => { void finish(0); });
 
 function controlledNpmCommand(npmArgs) {
   if (process.platform === "win32") {
@@ -245,9 +297,11 @@ function argsForRelaunch({ noOpen = false, port } = {}) {
   return next;
 }
 
-function relaunch({ env = {}, noOpen = false, port } = {}) {
+async function relaunch({ env = {}, noOpen = false, port, delayMs = 0 } = {}) {
   ending = true;
-  killChildren();
+  await stopChildrenGracefully();
+  if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+
   const child = spawn(process.execPath, [script, ...argsForRelaunch({ noOpen, port: port ?? currentPort })], {
     cwd: root,
     stdio: "inherit",
@@ -266,11 +320,11 @@ async function fail(message) {
   console.error(`\n\x1b[31m[ERROR] ${message}\x1b[0m`);
   if (updateApplied && !serverReady) {
     ending = true;
-    killChildren();
+    await stopChildrenGracefully();
     try {
       if (await rollbackFailedStart(root, message)) {
         warn("The new version did not start. The previous installation was restored and will be started again.");
-        relaunch({ env: { AKARIYA_REINSTALL: "1" }, noOpen: true, port: currentPort });
+        await relaunch({ env: { AKARIYA_REINSTALL: "1" }, noOpen: true, port: currentPort });
         return;
       }
     } catch (error) {
@@ -279,6 +333,47 @@ async function fail(message) {
     process.exit(1);
   }
   finish(1);
+}
+
+function nextCrashState() {
+  const now = Date.now();
+  const previousStart = Number(process.env.AKARIYA_CRASH_WINDOW_START ?? "0");
+  const previousCount = Number(process.env.AKARIYA_CRASH_COUNT ?? "0");
+  if (
+    !Number.isFinite(previousStart)
+    || !Number.isInteger(previousCount)
+    || previousStart <= 0
+    || previousCount < 0
+    || now - previousStart > CRASH_WINDOW_MS
+  ) {
+    return { count: 1, windowStart: now };
+  }
+  return { count: previousCount + 1, windowStart: previousStart };
+}
+
+async function recoverBackendCrash(message) {
+  if (updateApplied && !serverReady) {
+    await fail(message);
+    return;
+  }
+
+  const state = nextCrashState();
+  if (state.count > MAX_CRASH_RESTARTS) {
+    await fail(`${message}. Crash-loop protection stopped automatic restart after ${MAX_CRASH_RESTARTS} attempts.`);
+    return;
+  }
+
+  const delayMs = Math.min(500 * 2 ** (state.count - 1), 4_000);
+  warn(`Backend crashed. Automatic restart ${state.count}/${MAX_CRASH_RESTARTS} in ${delayMs} ms.`);
+  await relaunch({
+    env: {
+      AKARIYA_CRASH_COUNT: String(state.count),
+      AKARIYA_CRASH_WINDOW_START: String(state.windowStart)
+    },
+    noOpen: true,
+    port: currentPort,
+    delayMs
+  });
 }
 
 function spawnManaged(label, command, commandArgs, options = {}) {
@@ -295,11 +390,16 @@ function spawnManaged(label, command, commandArgs, options = {}) {
     if (ending) return;
     if (label === "backend" && code === RESTART_CODE) {
       step("Restart requested by Akariya");
-      relaunch({ noOpen: true, port: currentPort });
+      void relaunch({ noOpen: true, port: currentPort });
       return;
     }
-    if (code === 0 && !signal) finish(0);
-    else void fail(`${label} exited unexpectedly (${signal ? `signal ${signal}` : `code ${String(code)}`})`);
+    if (code === 0 && !signal) {
+      void finish(0);
+      return;
+    }
+    const message = `${label} exited unexpectedly (${signal ? `signal ${signal}` : `code ${String(code)}`})`;
+    if (label === "backend") void recoverBackendCrash(message);
+    else void fail(message);
   });
   return child;
 }
@@ -342,22 +442,35 @@ async function main() {
   if (!Number.isInteger(major) || major < 20) throw new Error(`Node.js 20+ is required; found ${process.version}`);
 
   const touched = await prepareInstallation();
-  const forcedReinstall = process.env.AKARIYA_REINSTALL === "1";
-  ensureDependencies({ force: forcedReinstall || touched });
+  const prebuilt = options.dev ? null : await verifyPrebuilt(root);
 
-  if (options.skipChecks) {
-    warn("--skip-checks is active: typecheck and tests are intentionally skipped for this launch.");
+  if (prebuilt !== null) {
+    step(`Verified prebuilt release ${prebuilt.sourceSha.slice(0, 12)} (${prebuilt.artifacts.length} artifacts)`);
   } else {
-    runQualityChecks();
-  }
+    const forcedReinstall = process.env.AKARIYA_REINSTALL === "1";
+    ensureDependencies({ force: forcedReinstall || touched });
 
-  runBuilds();
+    if (options.skipChecks) {
+      warn("--skip-checks is active: typecheck and tests are intentionally skipped for this launch.");
+    } else {
+      runQualityChecks();
+    }
+
+    runBuilds();
+  }
 
   const backendPort = await findPort(requestedPort);
   currentPort = backendPort;
   const backendUrl = `http://127.0.0.1:${backendPort}/`;
   step(`Starting backend on ${backendUrl}`);
-  const backendEnv = { ...process.env, PORT: String(backendPort), AKARIYA_PORT: String(backendPort), AKARIYA_HOST: "127.0.0.1", AKARIYA_SUPERVISED: "1" };
+  const backendEnv = {
+    ...process.env,
+    PORT: String(backendPort),
+    AKARIYA_PORT: String(backendPort),
+    AKARIYA_HOST: "127.0.0.1",
+    AKARIYA_SUPERVISED: "1",
+    AKARIYA_SUPERVISOR_TOKEN: supervisorToken
+  };
   delete backendEnv.AKARIYA_REINSTALL;
   spawnManaged("backend", process.execPath, [path.join(root, "apps", "server", "dist", "server.mjs")], { env: backendEnv });
 
@@ -381,7 +494,9 @@ async function main() {
 
   serverReady = true;
   if (updateApplied) await confirmUpdate(root);
+  const startupMs = Math.round(performance.now() - launcherStartedAt);
   console.log(`\n\x1b[32mAkariya Tenka работает: ${openUrl}\x1b[0m`);
+  console.log(`Startup: ${startupMs} ms${prebuilt === null ? " (source mode)" : " (verified prebuilt)"}`);
   console.log("Ctrl+C — остановить");
   if (!options.noOpen && !smokeMode) openBrowser(openUrl);
   if (smokeMode) finish(0);
