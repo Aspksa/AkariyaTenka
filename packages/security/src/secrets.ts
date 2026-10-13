@@ -31,6 +31,13 @@ export class EnvironmentSecretStore implements SecretStore {
   async delete(_key: string): Promise<void> {
     throw new Error("EnvironmentSecretStore is read-only");
   }
+
+  probe(): { readonly status: "ok"; readonly configuredKeys: number } {
+    const configuredKeys = Object.entries(this.env)
+      .filter(([key, value]) => key.startsWith(this.prefix) && typeof value === "string" && value.length > 0)
+      .length;
+    return { status: "ok", configuredKeys };
+  }
 }
 
 const secretKey = /(secret|token|password|api[-_]?key|authorization|credential)/iu;
