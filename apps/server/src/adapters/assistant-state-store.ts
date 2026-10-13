@@ -241,9 +241,9 @@ export class SqliteAssistantStateStore implements AssistantStateStore {
         tool_calls_json TEXT
       );
       CREATE INDEX IF NOT EXISTS conversation_messages_session_idx
-        ON conversation_messages(session_id, rowid);
+        ON conversation_messages(session_id, created_at, id);
       CREATE INDEX IF NOT EXISTS conversation_messages_turn_idx
-        ON conversation_messages(session_id, turn_id, rowid);
+        ON conversation_messages(session_id, turn_id, created_at, id);
       CREATE TABLE IF NOT EXISTS assistant_memories (
         id TEXT PRIMARY KEY,
         scope TEXT NOT NULL,
