@@ -18,7 +18,18 @@ export async function createStorage(config: AppConfig): Promise<{
 }> {
   await mkdir(config.dataDir, { recursive: true });
   return {
-    audit: new FileAuditSink(path.join(config.dataDir, "audit.jsonl")),
-    idempotency: new FileIdempotencyStore(path.join(config.dataDir, "idempotency.json"), idempotencyValueSchema)
+    audit: new FileAuditSink(
+      path.join(config.dataDir, "audit.jsonl"),
+      config.auditMaxBytes,
+      config.auditMaxArchives
+    ),
+    idempotency: new FileIdempotencyStore(
+      path.join(config.dataDir, "idempotency.json"),
+      idempotencyValueSchema,
+      {
+        ttlMs: config.idempotencyTtlMs,
+        maxEntries: config.idempotencyMaxEntries
+      }
+    )
   };
 }
