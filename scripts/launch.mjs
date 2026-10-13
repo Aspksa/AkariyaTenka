@@ -297,9 +297,11 @@ function argsForRelaunch({ noOpen = false, port } = {}) {
   return next;
 }
 
-function relaunch({ env = {}, noOpen = false, port } = {}) {
+async function relaunch({ env = {}, noOpen = false, port, delayMs = 0 } = {}) {
   ending = true;
-  killChildren();
+  await stopChildrenGracefully();
+  if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+
   const child = spawn(process.execPath, [script, ...argsForRelaunch({ noOpen, port: port ?? currentPort })], {
     cwd: root,
     stdio: "inherit",
@@ -322,7 +324,7 @@ async function fail(message) {
     try {
       if (await rollbackFailedStart(root, message)) {
         warn("The new version did not start. The previous installation was restored and will be started again.");
-        relaunch({ env: { AKARIYA_REINSTALL: "1" }, noOpen: true, port: currentPort });
+        await relaunch({ env: { AKARIYA_REINSTALL: "1" }, noOpen: true, port: currentPort });
         return;
       }
     } catch (error) {
