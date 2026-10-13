@@ -16,7 +16,10 @@ async function fixture() {
   return root;
 }
 
-test("verifies a complete prebuilt release", async () => {
+const nodeMajor = Number(process.versions.node.split(".")[0]);
+const prebuiltTest = nodeMajor >= 22 ? test : test.skip;
+
+prebuiltTest("verifies a complete prebuilt release", async () => {
   const root = await fixture();
   try {
     const manifest = await verifyPrebuilt(root);
@@ -28,7 +31,7 @@ test("verifies a complete prebuilt release", async () => {
   }
 });
 
-test("rejects a modified production artifact", async () => {
+prebuiltTest("rejects a modified production artifact", async () => {
   const root = await fixture();
   try {
     await writeFile(path.join(root, "apps", "server", "dist", "server.mjs"), "tampered\n");
