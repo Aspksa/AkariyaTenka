@@ -320,7 +320,7 @@ async function fail(message) {
   console.error(`\n\x1b[31m[ERROR] ${message}\x1b[0m`);
   if (updateApplied && !serverReady) {
     ending = true;
-    killChildren();
+    await stopChildrenGracefully();
     try {
       if (await rollbackFailedStart(root, message)) {
         warn("The new version did not start. The previous installation was restored and will be started again.");
@@ -333,6 +333,47 @@ async function fail(message) {
     process.exit(1);
   }
   finish(1);
+}
+
+function nextCrashState() {
+  const now = Date.now();
+  const previousStart = Number(process.env.AKARIYA_CRASH_WINDOW_START ?? "0");
+  const previousCount = Number(process.env.AKARIYA_CRASH_COUNT ?? "0");
+  if (
+    !Number.isFinite(previousStart)
+    || !Number.isInteger(previousCount)
+    || previousStart <= 0
+    || previousCount < 0
+    || now - previousStart > CRASH_WINDOW_MS
+  ) {
+    return { count: 1, windowStart: now };
+  }
+  return { count: previousCount + 1, windowStart: previousStart };
+}
+
+async function recoverBackendCrash(message) {
+  if (updateApplied && !serverReady) {
+    await fail(message);
+    return;
+  }
+
+  const state = nextCrashState();
+  if (state.count > MAX_CRASH_RESTARTS) {
+    await fail(`${message}. Crash-loop protection stopped automatic restart after ${MAX_CRASH_RESTARTS} attempts.`);
+    return;
+  }
+
+  const delayMs = Math.min(500 * 2 ** (state.count - 1), 4_000);
+  warn(`Backend crashed. Automatic restart ${state.count}/${MAX_CRASH_RESTARTS} in ${delayMs} ms.`);
+  await relaunch({
+    env: {
+      AKARIYA_CRASH_COUNT: String(state.count),
+      AKARIYA_CRASH_WINDOW_START: String(state.windowStart)
+    },
+    noOpen: true,
+    port: currentPort,
+    delayMs
+  });
 }
 
 function spawnManaged(label, command, commandArgs, options = {}) {
@@ -349,11 +390,16 @@ function spawnManaged(label, command, commandArgs, options = {}) {
     if (ending) return;
     if (label === "backend" && code === RESTART_CODE) {
       step("Restart requested by Akariya");
-      relaunch({ noOpen: true, port: currentPort });
+      void relaunch({ noOpen: true, port: currentPort });
       return;
     }
-    if (code === 0 && !signal) finish(0);
-    else void fail(`${label} exited unexpectedly (${signal ? `signal ${signal}` : `code ${String(code)}`})`);
+    if (code === 0 && !signal) {
+      void finish(0);
+      return;
+    }
+    const message = `${label} exited unexpectedly (${signal ? `signal ${signal}` : `code ${String(code)}`})`;
+    if (label === "backend") void recoverBackendCrash(message);
+    else void fail(message);
   });
   return child;
 }
