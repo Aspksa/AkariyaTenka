@@ -137,19 +137,25 @@ export class NetworkClient {
   }
 
   private async backoff(attempt: number, signal?: AbortSignal): Promise<void> {
-    if (signal?.aborted) throw signal.reason;
     const delay = Math.min(250 * 2 ** attempt, 2_000);
+    if (signal === undefined) {
+      await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      return;
+    }
+    if (signal.aborted) throw signal.reason;
+
+    const parent = signal;
     await new Promise<void>((resolve, reject) => {
       const onAbort = () => {
         clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
-        reject(signal.reason);
+        parent.removeEventListener("abort", onAbort);
+        reject(parent.reason);
       };
       const timer = setTimeout(() => {
-        signal?.removeEventListener("abort", onAbort);
+        parent.removeEventListener("abort", onAbort);
         resolve();
       }, delay);
-      signal?.addEventListener("abort", onAbort, { once: true });
+      parent.addEventListener("abort", onAbort, { once: true });
     });
   }
 
