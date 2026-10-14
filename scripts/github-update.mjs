@@ -105,7 +105,7 @@ async function downloadOnce(sha, file, attempt) {
   const response = await fetch(url, { signal: AbortSignal.timeout(120000), redirect: "follow" });
   if (!response.ok || !response.body) throw Error("GitHub download failed: HTTP " + response.status);
   const sizeText = response.headers.get("content-length");
-  const total = sizeText && /^\\d+$/.test(sizeText) ? Number(sizeText) : null;
+  const total = sizeText && /^\d+$/.test(sizeText) ? Number(sizeText) : null;
   if (total !== null && total > 40_000_000) throw Error("GitHub archive is too large");
   let received = 0, lastProgress = 0;
   await writeProgress("downloading", 0, total);
