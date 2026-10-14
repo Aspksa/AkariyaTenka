@@ -70,6 +70,7 @@ export function createHomeView():HomeView {
     !["update","error","info"].includes(String(n.kind)) ||
     typeof n.title!=="string"||n.title.length>120 ||
     typeof n.detail!=="string"||n.detail.length>300)return;
+  if(n.id.startsWith("update:state:"))notifications.dismiss("update:"+n.id.slice("update:state:".length));
   notifications.notify({id:n.id,kind:n.kind as "update"|"error"|"info",
     title:n.title,detail:n.detail});
  });
@@ -180,12 +181,10 @@ export function createHomeView():HomeView {
    if(!result)return;
    if(result==="confirmed"){
     notifications.dismiss("update:"+pending.sha);
-    notifications.dismiss("update:started:"+pending.sha);
-    notifications.notify({id:"update:confirmed:"+pending.sha,kind:"info",
+    notifications.notify({id:"update:state:"+pending.sha,kind:"info",
       title:"Обновление завершено",detail:"Версия "+pending.sha.slice(0,12)+" успешно установлена."});
    }else{
-    notifications.dismiss("update:started:"+pending.sha);
-    notifications.notify({id:"update:"+result+":"+pending.sha,kind:"error",
+    notifications.notify({id:"update:state:"+pending.sha,kind:"error",
       title:result==="rolled_back"?"Предыдущая версия восстановлена":"Ошибка обновления",
       detail:"Операция завершилась без установки версии "+pending.sha.slice(0,12)+"."});
    }
