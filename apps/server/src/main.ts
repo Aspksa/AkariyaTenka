@@ -1,5 +1,5 @@
 import { performance } from "node:perf_hooks";
-import { Logger, SystemClock, toError } from "@akariya/core";
+import { AppError, Logger, SystemClock, toError } from "@akariya/core";
 import { createSecretRedactor } from "@akariya/security";
 import { AsyncLocalRequestContextScope } from "./adapters/request-context-scope.js";
 import { loadConfig } from "./bootstrap/config.js";
@@ -55,7 +55,7 @@ async function main(): Promise<void> {
       assistantTurn: async (payload, context) => {
         const input = payload as {text?:unknown;sessionId?:unknown};
         if (!input || typeof input.text !== "string" || input.text.length > 8000 || (input.sessionId !== undefined && typeof input.sessionId !== "string"))
-          throw new Error("Invalid assistant input");
+          throw new AppError({code:"VALIDATION",message:"Invalid assistant input"});
         return JSON.stringify(await assistant.runtime.runTurn({text:input.text,...(typeof input.sessionId === "string" ? {sessionId:input.sessionId} : {})},context));
       },
       performance: createPerformanceRoute(modules.metrics),
