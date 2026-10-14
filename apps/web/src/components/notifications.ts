@@ -1,10 +1,10 @@
 import { createIcon } from "./icons.js";
 export type NoticeKind="update"|"error"|"info";
-export interface Notice { id:string;kind:NoticeKind;title:string;detail:string;at:number;read:boolean }
+export interface Notice { id:string;kind:NoticeKind;title:string;detail:string;at:number;read:boolean;archived?:boolean }
 const KEY="akariya-notifications-v1";
 const SETTINGS_KEY="akariya-notification-settings-v1";
-export interface NoticeSettings {showUpdates:boolean;showErrors:boolean;showInfo:boolean;unreadOnly:boolean;sound:boolean;doNotDisturb:boolean;minimumPriority:"all"|"important"|"critical";retentionDays:7|30|90|0}
-const defaults:NoticeSettings={showUpdates:true,showErrors:true,showInfo:true,unreadOnly:false,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30};
+export interface NoticeSettings {showUpdates:boolean;showErrors:boolean;showInfo:boolean;unreadOnly:boolean;sound:boolean;doNotDisturb:boolean;minimumPriority:"all"|"important"|"critical";retentionDays:7|30|90|0;density:"compact"|"expanded";opacity:70|85|100;fontScale:90|100|115}
+const defaults:NoticeSettings={showUpdates:true,showErrors:true,showInfo:true,unreadOnly:false,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30,density:"expanded",opacity:100,fontScale:100};
 export function parseNoticeSettings(input:unknown):NoticeSettings {
  if(!input||typeof input!=="object"||Array.isArray(input))return {...defaults};
  const v=input as Record<string,unknown>;
@@ -16,7 +16,10 @@ export function parseNoticeSettings(input:unknown):NoticeSettings {
   sound:typeof v.sound==="boolean"?v.sound:false,
   doNotDisturb:typeof v.doNotDisturb==="boolean"?v.doNotDisturb:false,
   minimumPriority:v.minimumPriority==="important"||v.minimumPriority==="critical"?v.minimumPriority:"all",
-  retentionDays:v.retentionDays===7||v.retentionDays===90||v.retentionDays===0?v.retentionDays:30
+  retentionDays:v.retentionDays===7||v.retentionDays===90||v.retentionDays===0?v.retentionDays:30,
+  density:v.density==="compact"?"compact":"expanded",
+  opacity:v.opacity===70||v.opacity===85?v.opacity:100,
+  fontScale:v.fontScale===90||v.fontScale===115?v.fontScale:100
  };
 }
 
@@ -27,16 +30,17 @@ export function parseNotices(value:unknown):Notice[] {
   ["update","error","info"].includes(x.kind)&&
   typeof x.title==="string"&&x.title.length<=120&&
   typeof x.detail==="string"&&x.detail.length<=300&&
-  typeof x.at==="number"&&Number.isFinite(x.at)&&typeof x.read==="boolean");
+  typeof x.at==="number"&&Number.isFinite(x.at)&&typeof x.read==="boolean"&&(x.archived===undefined||typeof x.archived==="boolean"));
  const unique=new Map<string,Notice>();
  for(const item of entries)unique.set(item.id,item);
- return [...unique.values()].slice(-30);
+ return [...unique.values()].slice(-300);
 }
 export function createNotificationCenter(openUpdates:()=>void){
  const wrapper=document.createElement("div");wrapper.className="notification-center";
  const toggle=document.createElement("button");toggle.type="button";toggle.className="notification-toggle";
  toggle.append(createIcon("bell"));toggle.setAttribute("aria-label","Уведомления");
  toggle.setAttribute("aria-expanded","false");toggle.title="Уведомления";
+ const dot=document.createElement("span");dot.className="notification-severity-dot";dot.hidden=true;dot.setAttribute("aria-hidden","true");toggle.append(dot);
  const count=document.createElement("span");count.className="notification-count";count.hidden=true;toggle.append(count);
  const panel=document.createElement("section");panel.className="notification-panel";panel.hidden=true;
  panel.setAttribute("aria-label","Центр уведомлений");
@@ -44,7 +48,15 @@ export function createNotificationCenter(openUpdates:()=>void){
  const title=document.createElement("strong");title.textContent="Уведомления";
  const clear=document.createElement("button");clear.type="button";clear.textContent="Очистить";clear.className="notification-clear";
  heading.append(title,clear);
- const items=document.createElement("div");items.className="notification-items";panel.append(heading,items);wrapper.append(toggle,panel);
+ const tabs=document.createElement("div");tabs.className="notification-tabs";tabs.setAttribute("role","tablist");tabs.setAttribute("aria-label","Фильтр уведомлений");
+ type Tab="all"|"unread"|"important"|"archive";
+ let activeTab:Tab="all";
+ for(const [key,label] of [["all","Все"],["unread","Непрочитанные"],["important","Важные"],["archive","Архив"]] as const){
+  const tab=document.createElement("button");tab.type="button";tab.className="notification-tab";tab.textContent=label;
+  tab.dataset.tab=key;tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(key===activeTab));
+  tab.addEventListener("click",()=>{activeTab=key;draw();});tabs.append(tab);
+ }
+ const items=document.createElement("div");items.className="notification-items";panel.append(heading,tabs,items);wrapper.append(toggle,panel);
  let notices:Notice[]=[];
  let settings={...defaults};
  try{settings=parseNoticeSettings(JSON.parse(localStorage.getItem(SETTINGS_KEY)??"null"));}catch{/* storage unavailable */}
@@ -93,6 +105,17 @@ export function createNotificationCenter(openUpdates:()=>void){
    settings={...settings,retentionDays:days};persistSettings();prune();draw();
  });
 
+ choice("Вид карточек",[{value:"compact",title:"Компактный"},{value:"expanded",title:"Расширенный"}],settings.density,value=>{
+  if(value!=="compact"&&value!=="expanded")return;settings={...settings,density:value};persistSettings();draw();
+ });
+ choice("Прозрачность панели",[{value:"70",title:"70%"},{value:"85",title:"85%"},{value:"100",title:"100%"}],String(settings.opacity),value=>{
+  const opacity=Number(value);if(opacity!==70&&opacity!==85&&opacity!==100)return;
+  settings={...settings,opacity:opacity as 70|85|100};persistSettings();draw();
+ });
+ choice("Размер текста",[{value:"90",title:"Мелкий"},{value:"100",title:"Обычный"},{value:"115",title:"Крупный"}],String(settings.fontScale),value=>{
+  const fontScale=Number(value);if(fontScale!==90&&fontScale!==100&&fontScale!==115)return;
+  settings={...settings,fontScale:fontScale as 90|100|115};persistSettings();draw();
+ });
  const hint=document.createElement("p");hint.className="notification-empty";
  hint.textContent="Фильтры скрывают записи в списке, но не удаляют события.";
  settingsPanel.append(hint);wrapper.append(settingsPanel);
@@ -120,36 +143,60 @@ export function createNotificationCenter(openUpdates:()=>void){
   }catch{/* Audio may be blocked */}
  }
  function draw(){
-  const unread=notices.filter(x=>!x.read).length;count.hidden=unread===0;count.textContent=String(unread);
+  const unread=notices.filter(x=>!x.read&&!x.archived).length;count.hidden=unread===0;count.textContent=unread>99?"99+":String(unread);
+  const severity=notices.some(n=>!n.read&&!n.archived&&n.kind==="error")?"critical":notices.some(n=>!n.read&&!n.archived&&n.kind==="update")?"warning":"none";
+  dot.hidden=severity==="none";dot.dataset.severity=severity;
+  wrapper.dataset.density=settings.density;
+  wrapper.style.setProperty("--notification-opacity",settings.opacity+"%");
+  wrapper.style.setProperty("--notification-font-scale",String(settings.fontScale/100));
+  for(const tab of tabs.querySelectorAll<HTMLButtonElement>(".notification-tab")){
+   const selected=tab.dataset.tab===activeTab;tab.setAttribute("aria-selected",String(selected));tab.tabIndex=selected?0:-1;
+  }
   toggle.setAttribute("aria-label",unread?"Уведомления, непрочитанных: "+unread:"Уведомления");
   items.replaceChildren();
-  const visible=notices.filter(n=>(!settings.unreadOnly||!n.read)&&
+  const visible=notices.filter(n=>(activeTab==="archive"?n.archived:!n.archived)&&
+   (activeTab!=="unread"||!n.read)&&(activeTab!=="important"||n.kind!=="info")&&
+   (!settings.unreadOnly||!n.read)&&
    (settings.minimumPriority==="all"||n.kind==="error"||(settings.minimumPriority==="important"&&n.kind==="update"))&&
    (n.kind==="update"?settings.showUpdates:n.kind==="error"?settings.showErrors:settings.showInfo));
   for(const item of [...visible].reverse()){
-   const row=document.createElement("article");row.className="notification-item"+(item.read?"":" unread");
+   const row=document.createElement("article");row.className="notification-item notification-priority-"+item.kind+(item.read?"":" unread");
+   const symbol=document.createElement("span");symbol.className="notification-event-icon";symbol.setAttribute("aria-hidden","true");
+   symbol.append(createIcon(item.kind==="error"?"alert":item.kind==="update"?"refresh":"info"));
+   const body=document.createElement("div");body.className="notification-event-body";row.append(symbol,body);
    const header=document.createElement("strong");header.textContent=item.title;
    const text=document.createElement("p");text.textContent=item.detail;
    const time=document.createElement("time");time.dateTime=new Date(item.at).toISOString();time.textContent=new Date(item.at).toLocaleString("ru-RU");
-   row.append(header,text,time);
+   const meta=document.createElement("div");meta.className="notification-event-meta";
+   const status=document.createElement("span");status.textContent=item.archived?"В архиве":item.read?"Прочитано":"Новое";
+   meta.append(time,status);body.append(header,text,meta);
+   const actions=document.createElement("div");actions.className="notification-event-actions";
+   const percent=item.kind==="update"?/([0-9]{1,3})%/u.exec(item.detail):null;
+   if(percent&&Number(percent[1])<=100){const progress=document.createElement("progress");progress.className="notification-progress";progress.max=100;progress.value=Number(percent[1]);progress.setAttribute("aria-label","Прогресс "+percent[1]+"%");body.append(progress);}
    if(item.kind==="update"){
     const show=document.createElement("button");show.type="button";show.textContent="Открыть обновления";
-    show.addEventListener("click",()=>{close();openUpdates();});row.append(show);
+    show.addEventListener("click",()=>{close();openUpdates();});actions.append(show);
    }
-   items.append(row);
+   const archive=document.createElement("button");archive.type="button";archive.textContent=item.archived?"Вернуть":"В архив";
+   archive.addEventListener("click",()=>{notices=notices.map(n=>n.id===item.id?{...n,archived:!n.archived,read:true}:n);save();draw();});actions.append(archive);
+   if(!item.read&&!item.archived){
+    const mark=document.createElement("button");mark.type="button";mark.textContent="Прочитано";
+    mark.addEventListener("click",()=>{notices=notices.map(n=>n.id===item.id?{...n,read:true}:n);save();draw();});actions.append(mark);
+   }
+   body.append(actions);items.append(row);
   }
-  if(!visible.length){const empty=document.createElement("p");empty.className="notification-empty";empty.textContent="Пока нет уведомлений";items.append(empty);}
+  if(!visible.length){const empty=document.createElement("p");empty.className="notification-empty";empty.textContent=activeTab==="archive"?"Архив пуст":"Нет уведомлений";items.append(empty);}
  }
  function close(){panel.hidden=true;settingsPanel.hidden=true;toggle.setAttribute("aria-expanded","false");}
  toggle.addEventListener("click",()=>{
   const opening=panel.hidden;close();panel.hidden=!opening;toggle.setAttribute("aria-expanded",String(opening));
-  if(opening){notices=notices.map(n=>({...n,read:true}));save();draw();}
+  if(opening)draw();
  });
  toggle.addEventListener("contextmenu",event=>{
   event.preventDefault();const opening=settingsPanel.hidden;close();
   settingsPanel.hidden=!opening;toggle.setAttribute("aria-expanded",String(opening));
  });
- clear.addEventListener("click",()=>{notices=[];save();draw();});
+ clear.addEventListener("click",()=>{notices=notices.filter(n=>n.archived);save();draw();});
  wrapper.addEventListener("keydown",event=>{if(event.key==="Escape"){close();toggle.focus();}});
  document.addEventListener("pointerdown",event=>{if(!wrapper.contains(event.target as Node))close();});
  prune();draw();
@@ -158,7 +205,7 @@ export function createNotificationCenter(openUpdates:()=>void){
   notify(item:Omit<Notice,"read"|"at">&{at?:number}){
    const old=notices.find(n=>n.id===item.id);
    if(old && old.title===item.title && old.detail===item.detail)return;
-   notices=[...notices.filter(n=>n.id!==item.id),{...item,at:item.at??Date.now(),read:false}].slice(-30);
+   notices=[...notices.filter(n=>n.id!==item.id),{...item,at:item.at??Date.now(),read:false}].slice(-300);
    prune();save();draw();
    if(!old)sound();
   },

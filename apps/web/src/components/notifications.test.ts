@@ -5,6 +5,7 @@ describe("notification persistence",()=>{
   const valid={id:"update:123",kind:"update",title:"New version",detail:"Ready",at:100,read:false};
   expect(parseNotices([valid,{...valid,kind:"script"},{...valid,title:"x".repeat(200)},null])).toEqual([valid]);
   expect(parseNotices({})).toEqual([]);
+  expect(parseNotices([{...valid,archived:true},{...valid,archived:"bad"}])).toEqual([{...valid,archived:true}]);
  });
  it("deduplicates persisted notices by stable event id",()=>{
   const first={id:"update:abc",kind:"update",title:"Available",detail:"Ready",at:100,read:false};
@@ -13,11 +14,15 @@ describe("notification persistence",()=>{
   expect(parseNotices([first,newest])).toEqual([newest]);
  });
  it("validates notification preferences with safe defaults",()=>{
-  expect(parseNoticeSettings(null)).toEqual({showUpdates:true,showErrors:true,showInfo:true,unreadOnly:false,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30});
-  expect(parseNoticeSettings({showUpdates:false,showErrors:"no",unreadOnly:true,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30})).toEqual({showUpdates:false,showErrors:true,showInfo:true,unreadOnly:true,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30});
+  expect(parseNoticeSettings(null)).toEqual({showUpdates:true,showErrors:true,showInfo:true,unreadOnly:false,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30,density:"expanded",opacity:100,fontScale:100});
+  expect(parseNoticeSettings({showUpdates:false,showErrors:"no",unreadOnly:true,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30,density:"expanded",opacity:100,fontScale:100})).toEqual({showUpdates:false,showErrors:true,showInfo:true,unreadOnly:true,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30,density:"expanded",opacity:100,fontScale:100});
  });
  it("validates advanced notification settings",()=>{
   expect(parseNoticeSettings({sound:true,doNotDisturb:true,minimumPriority:"critical",retentionDays:7})).toMatchObject({sound:true,doNotDisturb:true,minimumPriority:"critical",retentionDays:7});
-  expect(parseNoticeSettings({sound:"yes",minimumPriority:"invalid",retentionDays:-1})).toMatchObject({sound:false,minimumPriority:"all",retentionDays:30});
+  expect(parseNoticeSettings({sound:"yes",minimumPriority:"invalid",retentionDays:-1})).toMatchObject({sound:false,minimumPriority:"all",retentionDays:30,density:"expanded",opacity:100,fontScale:100});
+ });
+ it("restores notification appearance preferences safely",()=>{
+  expect(parseNoticeSettings({density:"compact",opacity:70,fontScale:115})).toMatchObject({density:"compact",opacity:70,fontScale:115});
+  expect(parseNoticeSettings({density:"invalid",opacity:14,fontScale:800})).toMatchObject({density:"expanded",opacity:100,fontScale:100});
  });
 });
