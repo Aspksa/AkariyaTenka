@@ -262,3 +262,32 @@ button{cursor:pointer}
 .notification-center .notification-setting select{max-width:100%;min-width:130px;background:var(--surface-3);color:var(--text);border:1px solid var(--line-strong);border-radius:7px;padding:6px}
 @media(max-width:540px){.notification-center .notification-panel{position:fixed;top:64px;right:12px;left:12px;width:auto;max-width:none;max-height:calc(100dvh - 100px);transform-origin:top center}.notification-event-actions button{min-height:32px}}
 @media(prefers-reduced-motion:reduce){.notification-center .notification-panel{animation:none}}
+
+/* Project history: celebratory yet readable statistics animation. */
+@keyframes akariya-stat-reveal{
+ from{opacity:0;transform:translateY(18px) scale(.955);filter:blur(4px)}
+ to{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}
+}
+@keyframes akariya-stat-border{
+ 0%{box-shadow:inset 0 0 0 1px transparent}
+ 50%{box-shadow:inset 0 0 0 1px rgba(238,166,103,.34),0 7px 28px rgba(238,94,77,.13)}
+ 100%{box-shadow:inset 0 0 0 1px transparent}
+}
+.akariya-git-stat-animated{
+ position:relative;overflow:hidden;
+ animation:akariya-stat-reveal .62s cubic-bezier(.2,.9,.22,1) both,akariya-stat-border 1.5s ease-out both;
+ animation-delay:var(--stat-delay,0ms),calc(var(--stat-delay,0ms) + .24s);
+ transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease;
+}
+.akariya-git-stat-animated::before{
+ content:"";position:absolute;top:0;left:0;right:0;height:2px;
+ background:linear-gradient(90deg,transparent,#de7464,#f4b873,transparent);
+ opacity:.72;transform-origin:left;pointer-events:none;
+}
+@media(hover:hover) and (prefers-reduced-motion:no-preference){
+ .akariya-git-stat-animated:hover{transform:translateY(-4px);border-color:rgba(244,184,115,.55);box-shadow:0 12px 32px rgba(0,0,0,.2)}
+}
+@media(prefers-reduced-motion:reduce){
+ .akariya-git-stat-animated{animation:none;transition:none}
+ .akariya-git-stat-animated::before{opacity:.35}
+}
