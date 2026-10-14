@@ -105,6 +105,9 @@ export function createNotificationCenter(openUpdates:()=>void){
    settings={...settings,retentionDays:days};persistSettings();prune();draw();
  });
 
+ choice("Вид карточек",[{value:"compact",title:"Компактный"},{value:"expanded",title:"Расширенный"}],settings.density,value=>{
+  if(value!=="compact"&&value!=="expanded")return;settings={...settings,density:value};persistSettings();draw();
+ });
  const hint=document.createElement("p");hint.className="notification-empty";
  hint.textContent="Фильтры скрывают записи в списке, но не удаляют события.";
  settingsPanel.append(hint);wrapper.append(settingsPanel);
