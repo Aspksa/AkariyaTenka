@@ -108,10 +108,35 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   statistics.append(statsTitle,statsNote,refreshStats,statsGrid);
   parent.insertBefore(statistics,parent.lastElementChild);
   const displayNumber=(v:number|null|undefined)=>typeof v==="number"?v.toLocaleString("ru-RU"):"Нет данных";
+  const statsMotion=()=>!window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const statsFormat=new Intl.NumberFormat("ru-RU");
   const showMetric=(symbol:string,title:string,value:string,description:string):void=>{
-    const box=document.createElement("article");box.className="akariya-git-stat";
+    const box=document.createElement("article");box.className="akariya-git-stat akariya-git-stat-animated";
+    const position=statsGrid.childElementCount;
+    box.style.setProperty("--stat-delay",Math.min(position,14)*55+"ms");
     const heading=document.createElement("strong");heading.textContent=symbol+" "+title;
-    const metric=document.createElement("p");metric.className="akariya-git-stat-value";metric.textContent=value;
+    const metric=document.createElement("p");metric.className="akariya-git-stat-value";
+    metric.textContent=value;
+    // Animate only genuine integer metric values, never dates, paths or missing statistics.
+    const numberMatch=/^([0-9][0-9\\s\\u00a0\\u202f]*)(.*)$/u.exec(value);
+    if(numberMatch&&statsMotion()){
+      const raw=numberMatch[1]!.replace(/\\s/gu,"");
+      const target=Number(raw);
+      if(Number.isSafeInteger(target)&&target>=0&&target<=1_000_000_000_000){
+        const suffix=numberMatch[2]??"";
+        const duration=1150;
+        metric.textContent="0"+suffix;
+        const startedAt=performance.now()+Math.min(position,14)*55;
+        const tick=(now:number):void=>{
+          if(!box.isConnected)return;
+          const fraction=Math.min(1,Math.max(0,(now-startedAt)/duration));
+          const eased=1-Math.pow(1-fraction,4);
+          metric.textContent=statsFormat.format(Math.round(target*eased))+suffix;
+          if(fraction<1)requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }
+    }
     const detail=document.createElement("small");detail.textContent=description;
     box.append(heading,metric,detail);statsGrid.append(box);
   };
