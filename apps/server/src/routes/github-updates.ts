@@ -53,7 +53,7 @@ async function githubChanges(current: string | null, latest: string, request: ty
       if (!commit || typeof commit !== "object" || !("message" in commit)) continue;
       const message = (commit as {message: unknown}).message;
       if (typeof message === "string" && message.trim())
-        changes.push(message.split("\n")[0].slice(0, 150));
+        changes.push((message.split("\n")[0] ?? "").slice(0, 150));
     }
     return changes;
   } catch { return []; }
