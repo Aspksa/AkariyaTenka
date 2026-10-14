@@ -21,7 +21,7 @@ export function createHomeView():HomeView {
  const shell=el("main","workspace");
  const aside=el("aside","sidebar");
  const collapseKey="akariya-sidebar-collapsed";
- const collapseButton=el("button","sidebar-toggle");
+ const collapseButton=el("button","nav-item sidebar-toggle");
  collapseButton.type="button";
  collapseButton.setAttribute("aria-controls","akariya-sidebar-navigation");
  function setCollapsed(collapsed:boolean):void {
@@ -29,7 +29,7 @@ export function createHomeView():HomeView {
   collapseButton.setAttribute("aria-expanded",String(!collapsed));
   collapseButton.setAttribute("aria-label",collapsed?"Развернуть боковое меню":"Свернуть боковое меню");
   collapseButton.title=collapsed?"Развернуть меню":"Свернуть меню";
-  collapseButton.replaceChildren(createIcon(collapsed?"chevron-right":"chevron-left"));
+  collapseButton.replaceChildren(icon(collapsed?"chevron-right":"chevron-left"),el("span",undefined,"Свернуть меню"));
  }
  let savedCollapsed=false;
  try{savedCollapsed=window.localStorage.getItem(collapseKey)==="true";}catch{/* Storage can be disabled. */}
@@ -44,7 +44,7 @@ export function createHomeView():HomeView {
  mark.src="/akariya-fox.svg";mark.alt="Akariya Tenka";mark.width=46;mark.height=46;
  const brandText=el("div","brand-text");
  brandText.append(el("strong",undefined,"AKARIYA"),el("span",undefined,"TENKA · PRIVATE SYSTEM"));
- branding.append(mark,brandText,collapseButton);
+ branding.append(mark,brandText);
  const nav=el("nav","navigation");nav.id="akariya-sidebar-navigation";nav.setAttribute("aria-label","Разделы");
  const sectionTitle=el("p","nav-heading","ПРОСТРАНСТВО");
  const topLink=el("button","nav-item active");
@@ -55,18 +55,17 @@ export function createHomeView():HomeView {
  const tools=el("div","nav-tools");
  const panels=el("section","tool-panels");
  panels.setAttribute("aria-label","Панель управления");
+ const pages:{slug:string;button:HTMLButtonElement;panel:HTMLElement;load:()=>void}[]=[];
  const toolInfo=[
-  {name:"Диагностика",symbol:"activity" as const,loader:()=>import("../features/diagnostics.js").then(m=>m.mountDiagnostics),caption:"Состояние и измерения системы"},
-  {name:"Обновления GitHub",symbol:"refresh" as const,loader:()=>import("../features/github-updates.js").then(m=>m.mountGithubUpdates),caption:"Проверка новых изменений проекта"}
+  {slug:"diagnostics",name:"Диагностика",symbol:"activity" as const,loader:()=>import("../features/diagnostics.js").then(m=>m.mountDiagnostics),caption:"Состояние и измерения системы"},
+  {slug:"updates",name:"Обновления GitHub",symbol:"refresh" as const,loader:()=>import("../features/github-updates.js").then(m=>m.mountGithubUpdates),caption:"Проверка новых изменений проекта"}
  ];
  const workspace=el("section","content");
+ const overview=el("div","overview");
  const pageTitle=el("h2","page-title","Обзор");
  const notifications=createNotificationCenter(()=>{(tools.children[1] as HTMLButtonElement)?.click();});
  function highlight(active:HTMLButtonElement|null):void {
   pageTitle.textContent=active?.getAttribute("aria-label")??"Обзор";
-  const openTool=active?Array.from(tools.children).indexOf(active):-1;
-  for(const card of cards.querySelectorAll<HTMLElement>(".action-card"))
-   card.classList.toggle("is-open",Number(card.dataset.tool)===openTool);
   for(const other of [topLink,...Array.from(tools.querySelectorAll<HTMLButtonElement>("button"))]){
    other.classList.toggle("active",other===active);
    if(other===active)other.setAttribute("aria-current","page");
@@ -76,7 +75,6 @@ export function createHomeView():HomeView {
  for(const info of toolInfo){
   const button=el("button","nav-item");button.type="button";
   button.append(icon(info.symbol),el("span",undefined,info.name));
-  button.setAttribute("aria-expanded","false");
   button.setAttribute("aria-label",info.name);button.title=info.name;
   const panel=el("section","tool-panel");
   panel.hidden=true;
@@ -87,39 +85,46 @@ export function createHomeView():HomeView {
   const panelTitle=el("div","panel-title");
   panelTitle.append(el("div",undefined,info.name),el("p",undefined,info.caption));
   const closePanel=el("button","panel-close");closePanel.type="button";
-  closePanel.title="Закрыть";closePanel.setAttribute("aria-label","Закрыть раздел «"+info.name+"»");
+  closePanel.title="Вернуться к обзору";closePanel.setAttribute("aria-label","Закрыть раздел «"+info.name+"» и вернуться к обзору");
   closePanel.append(createIcon("close"));
-  closePanel.addEventListener("click",()=>{button.click();button.focus();});
+  closePanel.addEventListener("click",()=>{topLink.click();topLink.focus();});
   panelHeader.append(panelTitle,closePanel);
   const area=el("div","panel-body");
   panel.append(panelHeader,area);
   let loaded=false;
-  button.addEventListener("click",()=>{
-   const opening=panel.hidden;
-   for(const other of tools.querySelectorAll("button")){other.setAttribute("aria-expanded","false");}
-   for(const other of panels.children){(other as HTMLElement).hidden=true;}
-   panel.hidden=!opening;
-   if(!opening){highlight(topLink);return;}
-   highlight(button);button.setAttribute("aria-expanded","true");
-   if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)
-    panel.scrollIntoView({behavior:"smooth",block:"nearest"});
+  pages.push({slug:info.slug,button,panel,load:()=>{
    if(loaded)return;
    loaded=true;area.textContent="Загрузка раздела…";
    void info.loader().then(mount=>{area.replaceChildren();return mount(area);}).catch((error:unknown)=>{
     loaded=false;area.textContent=error instanceof Error?error.message:String(error);
    });
-  });
+  }});
+  button.addEventListener("click",()=>{navigate(info.slug);});
   tools.append(button);panels.append(panel);
  }
  nav.append(sectionTitle,topLink,sectionLabel,tools);
- topLink.addEventListener("click",()=>{
-  for(const other of tools.querySelectorAll("button")){other.setAttribute("aria-expanded","false");}
-  highlight(topLink);
-  for(const panel of panels.children)(panel as HTMLElement).hidden=true;
-  window.scrollTo({top:0,behavior:"smooth"});
- });
+ topLink.addEventListener("click",()=>{navigate("");});
+ // Each menu entry is its own page, addressed by the URL hash so Back/Forward work.
+ function navigate(slug:string):void {
+  const target="#/"+slug;
+  if(window.location.hash===target||(!slug&&!window.location.hash))showRoute();
+  else window.location.hash=target;
+ }
+ function showRoute():void {
+  const slug=window.location.hash.replace(/^#\/?/,"");
+  const page=pages.find(item=>item.slug===slug);
+  overview.hidden=!!page;
+  for(const item of pages)item.panel.hidden=item!==page;
+  highlight(page?.button??topLink);
+  page?.load();
+  window.scrollTo({top:0});
+ }
+ window.addEventListener("hashchange",showRoute);
  const sidebarFoot=el("div","sidebar-foot");
- sidebarFoot.append(el("span","online-dot"),el("span",undefined,"ЛОКАЛЬНАЯ СИСТЕМА"));
+ const systemState=el("div","system-state");
+ systemState.title="Локальная система";
+ systemState.append(el("span","online-dot"),el("span",undefined,"ЛОКАЛЬНАЯ СИСТЕМА"));
+ sidebarFoot.append(collapseButton,systemState);
  const sidebarInner=el("div","sidebar-inner");
  sidebarInner.append(branding,nav,sidebarFoot);
  aside.append(sidebarInner);
@@ -201,9 +206,7 @@ export function createHomeView():HomeView {
    const data=actions[id];
    const hidden=preferences.hidden.includes(id);
    if(!hidden){
-    const card=el("button","action-card");card.type="button";card.dataset.tool=String(data.tool);
-    const current=tools.querySelector('[aria-expanded="true"]');
-    card.classList.toggle("is-open",!!current&&Array.from(tools.children).indexOf(current)===data.tool);
+    const card=el("button","action-card");card.type="button";
     const emblem=el("span","card-icon");
     emblem.append(createIcon(id==="diagnostics"?"activity":"refresh"));
     card.append(el("span","card-index",data.index),emblem,el("strong","card-name",data.name),
@@ -239,7 +242,9 @@ export function createHomeView():HomeView {
  bottom.append(el("span",undefined,"Akariya Tenka"),el("span",undefined,"Crimson · private by design"));
  const hero=el("section","hero");
  hero.append(intro,status);
- workspace.append(mast,updateNotice,hero,actionHeader,dashboardControls,cards,panels,bottom);
+ overview.append(updateNotice,hero,actionHeader,dashboardControls,cards);
+ workspace.append(mast,overview,panels,bottom);
+ showRoute();
  shell.append(aside,workspace);
  return {element:shell,update:(state)=>{
   badge.update(state);
