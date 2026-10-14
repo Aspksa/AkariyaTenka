@@ -78,7 +78,7 @@ export function createHomeView(): HomeView {
       .finally(() => { updatesButton.disabled = false; });
   });
 
-  const portableButton = textElement("button", "diagnostics-trigger", "Перенос и SSD");
+  const portableButton = textElement("button", "diagnostics-trigger", "Перенос Akariya");
   portableButton.type = "button";
   const portablePanel = document.createElement("section");
   portablePanel.className = "diagnostics";
