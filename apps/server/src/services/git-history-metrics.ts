@@ -84,9 +84,10 @@ async function calculate(root:string):Promise<HistoryMetrics>{
   }catch{/* inaccessible tracked file */}
  }
  const entries=[...sizes].filter(([,lines])=>lines>0);
+ const codeEntries=entries.filter(([p])=>![".json",".yml",".yaml"].includes(path.extname(p).toLowerCase()));
  const biggest=entries.reduce<[string,number]|null>((best,item)=>!best||item[1]>best[1]?item:best,null);
- const smallest=entries.reduce<[string,number]|null>((best,item)=>!best||item[1]<best[1]?item:best,null);
- const lineValues=entries.map(([,v])=>v);
+ const smallest=codeEntries.reduce<[string,number]|null>((best,item)=>!best||item[1]<best[1]?item:best,null);
+ const lineValues=codeEntries.map(([,v])=>v);
  const base:HistoryMetrics={
   available:history,...(reason?{reason}:{}),
   wordsAdded:null,wordsDeleted:null,wordsRewritten:null,newFiles:null,deletedFiles:null,
