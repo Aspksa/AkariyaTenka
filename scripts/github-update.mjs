@@ -37,6 +37,22 @@ export async function appendGithubUpdateEvent(event, revision, installRoot = roo
   }
   await appendFile(file, JSON.stringify({ at: new Date().toISOString(), event, revision }) + "\n", { mode: 0o600 });
 }
+// Optional measurements never interrupt installation or recovery.
+async function recordTelemetry(event, revision, metrics = {}, installRoot = root) {
+  if (typeof event !== "string" || !/^[a-z_]{3,32}$/.test(event) ||
+      (revision !== null && (typeof revision !== "string" || !SHA.test(revision)))) return;
+  try {
+    const directory = path.join(installRoot, ".runtime", "github-updater");
+    await mkdir(directory, { recursive: true });
+    const file = path.join(directory, "telemetry.jsonl");
+    if (await exists(file)) {
+      const info = await lstat(file);
+      if (!info.isFile() || info.isSymbolicLink()) return;
+      if (info.size >= 1024 * 1024) { await rm(file + ".1", {force:true}); await rename(file, file + ".1"); }
+    }
+    await appendFile(file, JSON.stringify({event,revision,at:new Date().toISOString(),...metrics}) + "\n",{mode:0o600});
+  } catch (error) { console.warn("Updater telemetry unavailable:",error instanceof Error?error.message:String(error)); }
+}
 async function tryHistory(event, revision, installRoot = root) {
   try { await appendGithubUpdateEvent(event, revision, installRoot); }
   catch (error) { console.warn("Could not write update history:", error); }
@@ -108,6 +124,7 @@ async function downloadOnce(sha, file, attempt) {
   const total = sizeText && /^\d+$/.test(sizeText) ? Number(sizeText) : null;
   if (total !== null && total > 40_000_000) throw Error("GitHub archive is too large");
   let received = 0, lastProgress = 0;
+  const started = performance.now();
   await writeProgress("downloading", 0, total);
   const monitor = new Transform({
     transform(chunk, _encoding, callback) {
@@ -121,6 +138,7 @@ async function downloadOnce(sha, file, attempt) {
   });
   await pipeline(Readable.fromWeb(response.body), monitor, createWriteStream(file, { flags: "wx" }));
   await writeProgress("downloaded", received, total);
+  await recordTelemetry("download_complete",sha,{bytes:received,durationMs:Math.round(performance.now()-started),attempt});
 }
 async function download(sha, file) {
   let lastError;
@@ -247,6 +265,7 @@ export async function confirmGithubUpdate(sha, installRoot = root) {
     throw Error("Pending update confirmation SHA mismatch");
   await rm(path.join(installRoot, ".runtime", "github-updater", "pending.json"));
   await tryHistory("confirmed", sha, installRoot);
+  await recordTelemetry("confirmed",sha,{},installRoot);
   try { await writeProgress("confirmed"); } catch { /* history remains authoritative */ }
   try { await pruneGithubUpdateBackups(installRoot); }
   catch (error) { console.warn("Backup pruning failed; update remains confirmed:", error); }
@@ -270,10 +289,13 @@ export async function recoverInterruptedUpdate(installRoot = root) {
   }
   await assertOrdinaryDirectory(record.backup);
   for (const name of record.names) await verifyDestination(installRoot, name);
+  const rollbackStarted=performance.now();
+  await recordTelemetry("rollback_started",typeof record.sha==="string"&&SHA.test(record.sha)?record.sha:null,{},installRoot);
   await restore(record.backup, record.names, record.existed, installRoot);
   await restoreMarkers(record.backup, installRoot);
   await rm(pending, { force: true });
   await tryHistory("rolled_back", typeof record.sha === "string" && SHA.test(record.sha) ? record.sha : null, installRoot);
+  await recordTelemetry("rollback_complete",typeof record.sha==="string"&&SHA.test(record.sha)?record.sha:null,{durationMs:Math.round(performance.now()-rollbackStarted)},installRoot);
   if (installRoot === root) try { await writeProgress("rolled_back"); } catch { /* history remains authoritative */ }
   return true;
 }
@@ -383,6 +405,7 @@ export async function applyGithubUpdate(sha) {
     await mkdir(extracted);
     console.log("Downloading pinned GitHub revision", sha);
     await tryHistory("download_started", sha);
+    const updateStarted = performance.now();
     await download(sha, zip);
     await writeProgress("validating");
     if (process.platform !== "win32") throw Error("GitHub ZIP installer currently supports Windows only");
@@ -403,6 +426,7 @@ export async function applyGithubUpdate(sha) {
       if (!await exists(path.join(staged, artifact))) throw Error("Validated build is missing " + artifact);
     }
     await tryHistory("validated", sha);
+    await recordTelemetry("validation_complete",sha,{elapsedMs:Math.round(performance.now()-updateStarted)});
     console.log("Probing staged backend and web without modifying installation");
     await probe(staged);
     backup = path.join(state, "backups", randomUUID());
@@ -434,12 +458,14 @@ export async function applyGithubUpdate(sha) {
     await writeFile(path.join(root, ".akariya-version"), sha + "\n");
     await rm(path.join(root, ".akariya-build.json"), { force: true });
     await tryHistory("prepared", sha);
+    await recordTelemetry("prepared",sha,{durationMs:Math.round(performance.now()-updateStarted)});
     await writeProgress("restarting");
     console.log("Update installed; awaiting confirmation from restarted launcher");
     return true;
   } catch (error) {
     console.error("[UPDATE ERROR]", error instanceof Error ? error.message : String(error));
     await tryHistory("failed", sha);
+    await recordTelemetry("failed",sha);
     try { await writeProgress("failed"); }
     catch (progressError) { console.warn("Could not record update progress:", progressError); }
     if (swapped) {
