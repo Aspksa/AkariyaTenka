@@ -13,6 +13,7 @@ import { createPerformanceRoute } from "./routes/performance.js";
 import { createUpdateStatusRoute } from "./routes/update-status.js";
 import { createUpdateCheckRoute } from "./routes/update-check.js";
 import { createVerifiedUpdateRoute } from "./routes/update-verify.js";
+import { createPortableStatusRoute } from "./routes/portable-status.js";
 import { HealthService } from "./services/health-service.js";
 import { ShutdownController } from "./services/shutdown-controller.js";
 
@@ -52,6 +53,7 @@ async function main(): Promise<void> {
       updateStatus: createUpdateStatusRoute(process.cwd()),
       updateCheck: createUpdateCheckRoute(process.cwd()),
       updateVerify: createVerifiedUpdateRoute(),
+      portableStatus: () => createPortableStatusRoute(process.cwd()),
       supervisorShutdown: async () => { requestSupervisorShutdown?.(); }
     },
     logger,
