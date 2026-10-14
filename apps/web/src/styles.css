@@ -193,3 +193,19 @@ button{cursor:pointer}
  html{scroll-behavior:auto}
  *,*::before,*::after{transition:none!important;animation:none!important}
 }
+
+/* Independent assistant shell, deliberately outside the main workspace. */
+.akariya-ai-avatar{position:fixed;right:22px;bottom:22px;z-index:101;border:1px solid #bd8c59;border-radius:50%;background:#3a1720;color:#fff;width:62px;height:62px;font-size:32px;cursor:pointer;box-shadow:0 8px 30px #0008}
+.akariya-ai-chat{position:fixed;right:22px;bottom:94px;z-index:100;width:min(420px,calc(100vw - 30px));height:min(610px,calc(100vh - 122px));background:#18171c;color:#f2ebea;border:1px solid #86604f;border-radius:18px;box-shadow:0 20px 70px #0009;overflow:hidden;display:flex;flex-direction:column}
+.akariya-ai-chat[hidden],.akariya-ai-settings[hidden]{display:none!important}
+.akariya-ai-head{display:flex;gap:12px;align-items:center;padding:14px;border-bottom:1px solid #45363a}
+.akariya-ai-head strong{flex:1}
+.akariya-ai-head button,.akariya-ai-form button{background:#53242e;color:#fff;border:1px solid #85525a;border-radius:9px;padding:8px 12px;cursor:pointer}
+.akariya-ai-messages{padding:14px;overflow-y:auto;flex:1;min-height:0}
+.akariya-ai-msg{padding:9px 12px;border-radius:11px;white-space:pre-wrap;overflow-wrap:anywhere;background:#29262c;margin:8px 0}
+.akariya-ai-msg.user{background:#512c35;margin-left:28px}
+.akariya-ai-msg.error{color:#ffb2b2}
+.akariya-ai-form{display:flex;gap:8px;padding:12px;border-top:1px solid #45363a;align-items:end}
+.akariya-ai-form textarea{flex:1;min-width:0;background:#28242a;color:#fff;border:1px solid #645159;border-radius:9px;padding:9px;resize:vertical}
+.akariya-ai-settings{position:absolute;right:0;top:53px;bottom:70px;width:min(300px,85%);background:#252027;border-left:1px solid #86604f;padding:18px;z-index:2;overflow:auto;box-shadow:-12px 0 35px #0008}
+@media(max-width:540px){.akariya-ai-avatar{right:12px;bottom:12px}.akariya-ai-chat{right:8px;bottom:85px}}
