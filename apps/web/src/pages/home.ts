@@ -32,7 +32,8 @@ export function createHomeView():HomeView {
  const panels=el("section","tool-panels");
  panels.setAttribute("aria-label","Панель управления");
  const toolInfo=[
-  {name:"Диагностика",symbol:"◇",loader:()=>import("../features/diagnostics.js").then(m=>m.mountDiagnostics),caption:"Состояние и измерения системы"}
+  {name:"Диагностика",symbol:"◇",loader:()=>import("../features/diagnostics.js").then(m=>m.mountDiagnostics),caption:"Состояние и измерения системы"},
+  {name:"Обновления GitHub",symbol:"↻",loader:()=>import("../features/github-updates.js").then(m=>m.mountGithubUpdates),caption:"Проверка новых изменений проекта"}
  ];
  const workspace=el("section","content");
  for(const info of toolInfo){
@@ -93,7 +94,8 @@ export function createHomeView():HomeView {
  actionHeader.append(el("h2",undefined,"Центр управления"),el("span",undefined,"БЫСТРЫЙ ДОСТУП"));
  const cards=el("div","action-grid");
  const actions=[
-  {index:"01",name:"Диагностика",detail:"Мониторинг системы, показатели производительности и состояние модулей."}
+  {index:"01",name:"Диагностика",detail:"Мониторинг системы, показатели производительности и состояние модулей."},
+  {index:"02",name:"Обновления GitHub",detail:"Проверить последнюю версию Akariya на GitHub."}
  ];
  actions.forEach((data,index)=>{
   const card=el("button","action-card");
