@@ -2,6 +2,20 @@ import { createIcon } from "./icons.js";
 export type NoticeKind="update"|"error"|"info";
 export interface Notice { id:string;kind:NoticeKind;title:string;detail:string;at:number;read:boolean }
 const KEY="akariya-notifications-v1";
+const SETTINGS_KEY="akariya-notification-settings-v1";
+export interface NoticeSettings {showUpdates:boolean;showErrors:boolean;showInfo:boolean;unreadOnly:boolean}
+const defaults:NoticeSettings={showUpdates:true,showErrors:true,showInfo:true,unreadOnly:false};
+export function parseNoticeSettings(input:unknown):NoticeSettings {
+ if(!input||typeof input!=="object"||Array.isArray(input))return {...defaults};
+ const v=input as Record<string,unknown>;
+ return {
+  showUpdates:typeof v.showUpdates==="boolean"?v.showUpdates:true,
+  showErrors:typeof v.showErrors==="boolean"?v.showErrors:true,
+  showInfo:typeof v.showInfo==="boolean"?v.showInfo:true,
+  unreadOnly:typeof v.unreadOnly==="boolean"?v.unreadOnly:false
+ };
+}
+
 export function parseNotices(value:unknown):Notice[] {
  if(!Array.isArray(value)) return [];
  const entries=value.filter((x):x is Notice=>!!x&&typeof x==="object"&&
@@ -28,13 +42,40 @@ export function createNotificationCenter(openUpdates:()=>void){
  heading.append(title,clear);
  const items=document.createElement("div");items.className="notification-items";panel.append(heading,items);wrapper.append(toggle,panel);
  let notices:Notice[]=[];
+ let settings={...defaults};
+ try{settings=parseNoticeSettings(JSON.parse(localStorage.getItem(SETTINGS_KEY)??"null"));}catch{/* storage unavailable */}
+ const settingsPanel=document.createElement("section");
+ settingsPanel.className="notification-panel notification-settings";
+ settingsPanel.hidden=true;settingsPanel.setAttribute("aria-label","Настройки уведомлений");
+ const settingsTitle=document.createElement("strong");settingsTitle.textContent="Настройки уведомлений";settingsPanel.append(settingsTitle);
+ const addSetting=(key:keyof NoticeSettings,label:string):void=>{
+  const row=document.createElement("label");row.className="notification-setting";
+  const input=document.createElement("input");input.type="checkbox";input.checked=settings[key];
+  input.addEventListener("change",()=>{
+   settings={...settings,[key]:input.checked};
+   try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));}catch{/* storage unavailable */}
+   draw();
+  });
+  const name=document.createElement("span");name.textContent=label;
+  row.append(input,name);settingsPanel.append(row);
+ };
+ addSetting("showUpdates","Показывать обновления");
+ addSetting("showErrors","Показывать ошибки");
+ addSetting("showInfo","Показывать информационные");
+ addSetting("unreadOnly","Только непрочитанные");
+ const hint=document.createElement("p");hint.className="notification-empty";
+ hint.textContent="Фильтры скрывают записи в списке, но не удаляют события.";
+ settingsPanel.append(hint);wrapper.append(settingsPanel);
+
  try{notices=parseNotices(JSON.parse(localStorage.getItem(KEY)??"[]"));}catch{/* storage unavailable */}
  function save(){try{localStorage.setItem(KEY,JSON.stringify(notices));}catch{/* no persistent storage */}}
  function draw(){
   const unread=notices.filter(x=>!x.read).length;count.hidden=unread===0;count.textContent=String(unread);
   toggle.setAttribute("aria-label",unread?"Уведомления, непрочитанных: "+unread:"Уведомления");
   items.replaceChildren();
-  for(const item of [...notices].reverse()){
+  const visible=notices.filter(n=>(!settings.unreadOnly||!n.read)&&
+   (n.kind==="update"?settings.showUpdates:n.kind==="error"?settings.showErrors:settings.showInfo));
+  for(const item of [...visible].reverse()){
    const row=document.createElement("article");row.className="notification-item"+(item.read?"":" unread");
    const header=document.createElement("strong");header.textContent=item.title;
    const text=document.createElement("p");text.textContent=item.detail;
@@ -46,12 +87,16 @@ export function createNotificationCenter(openUpdates:()=>void){
    }
    items.append(row);
   }
-  if(!notices.length){const empty=document.createElement("p");empty.className="notification-empty";empty.textContent="Пока нет уведомлений";items.append(empty);}
+  if(!visible.length){const empty=document.createElement("p");empty.className="notification-empty";empty.textContent="Пока нет уведомлений";items.append(empty);}
  }
- function close(){panel.hidden=true;toggle.setAttribute("aria-expanded","false");}
+ function close(){panel.hidden=true;settingsPanel.hidden=true;toggle.setAttribute("aria-expanded","false");}
  toggle.addEventListener("click",()=>{
-  const opening=panel.hidden;panel.hidden=!opening;toggle.setAttribute("aria-expanded",String(opening));
+  const opening=panel.hidden;close();panel.hidden=!opening;toggle.setAttribute("aria-expanded",String(opening));
   if(opening){notices=notices.map(n=>({...n,read:true}));save();draw();}
+ });
+ toggle.addEventListener("contextmenu",event=>{
+  event.preventDefault();const opening=settingsPanel.hidden;close();
+  settingsPanel.hidden=!opening;toggle.setAttribute("aria-expanded",String(opening));
  });
  clear.addEventListener("click",()=>{notices=[];save();draw();});
  wrapper.addEventListener("keydown",event=>{if(event.key==="Escape"){close();toggle.focus();}});
