@@ -14,7 +14,45 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   const install = document.createElement("button");
   install.type = "button"; install.className = "nav-item";
   install.textContent = "Установить обновление"; install.hidden = true;
-  parent.append(button, message, details, link, install);
+  const historyTitle = document.createElement("h3");
+  historyTitle.textContent = "История обновлений";
+  const historyList = document.createElement("ul");
+  historyList.setAttribute("aria-label", "История обновлений Akariya");
+  parent.append(button, message, details, link, install, historyTitle, historyList);
+  const historyLabels: Record<string, string> = {
+    download_started: "Загрузка", validated: "Проверка сборки",
+    prepared: "Установка подготовлена", confirmed: "Обновление подтверждено",
+    rolled_back: "Откат", failed: "Ошибка обновления"
+  };
+  const loadHistory = async (): Promise<void> => {
+    try {
+      const response = await fetch("/api/updates/history", { cache: "no-store" });
+      if (!response.ok) throw Error("History unavailable");
+      const payload = await response.json() as {
+        events?: { at: string; event: string; revision: string | null }[]
+      };
+      historyList.replaceChildren();
+      const records = Array.isArray(payload.events) ? payload.events.slice(0, 12) : [];
+      for (const record of records) {
+        if (typeof record.at !== "string" || typeof record.event !== "string") continue;
+        const item = document.createElement("li");
+        const label = historyLabels[record.event] ?? "Событие";
+        item.textContent = label + " · " + new Date(record.at).toLocaleString("ru-RU") +
+          (record.revision && /^[0-9a-f]{40}$/.test(record.revision) ? " · " + record.revision.slice(0, 12) : "");
+        historyList.append(item);
+      }
+      if (historyList.childElementCount === 0) {
+        const empty = document.createElement("li");
+        empty.textContent = "История пока пуста";
+        historyList.append(empty);
+      }
+    } catch {
+      historyList.replaceChildren();
+      const error = document.createElement("li");
+      error.textContent = "История временно недоступна";
+      historyList.append(error);
+    }
+  };
   let approvedSha: string | null = null;
   install.addEventListener("click", () => {
     if (!approvedSha || !confirm("Установить обновление Akariya из GitHub? Приложение перезапустится. Локальные данные будут сохранены.")) return;
@@ -55,7 +93,12 @@ export function mountGithubUpdates(parent: HTMLElement): void {
       message.textContent = "Не удалось проверить обновления: " +
         (error instanceof Error ? error.message : String(error));
       link.hidden = true; install.hidden = true;
-    } finally { inProgress = false; button.disabled = false; }
+    } finally { inProgress = false; button.disabled = false; void loadHistory(); }
   };
+  button.addEventListener("click", () => { void check(); });
+  const intervalMs = 30 * 60 * 1000;
+  window.setInterval(() => {
+    if (document.visibilityState === "visible") void check();
+  }, intervalMs);
   void check();
 }
