@@ -458,12 +458,18 @@ function spawnManaged(label, command, commandArgs, options = {}) {
     children.delete(child);
     if (ending) return;
     if (label === "backend" && code === RESTART_CODE) {
-      const fs = import("node:fs/promises");
-      void fs.then(async api => {
+      void (async () => {
+        const fs = await import("node:fs/promises");
         const rollbackFile = path.join(root, ".runtime", "github-updater", "rollback-request.json");
-        try { await api.access(rollbackFile); await processManualRollback(); }
-        catch { await installPendingGithubUpdate(); }
-      });
+        let requested = false;
+        try { await fs.access(rollbackFile); requested = true; }
+        catch (error) {
+          if (error?.code !== "ENOENT") throw error;
+        }
+        if (requested) await processManualRollback();
+        else await installPendingGithubUpdate();
+      })().catch(error => { void fail("Update supervisor failed: " +
+        (error instanceof Error ? error.message : String(error))); });
       return;
     }
     if (code === 0 && !signal) {

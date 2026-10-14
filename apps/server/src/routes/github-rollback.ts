@@ -23,7 +23,11 @@ export async function rollbackSnapshots(root: string): Promise<{id:string;revisi
       const data: unknown = JSON.parse(await readFile(marker, "utf8"));
       const version = (await readFile(versionPath, "utf8")).trim();
       if (!data || typeof data !== "object" || !("kind" in data) ||
-          data.kind !== "akariya-github-backup" || !SHA.test(version)) continue;
+          data.kind !== "akariya-github-backup" || !("schemaVersion" in data) ||
+          data.schemaVersion !== 1 || !SHA.test(version)) continue;
+      const names = await readdir(folder);
+      if (!["scripts", "apps", "packages", "package.json", "package-lock.json", "AKARIYA.bat"]
+        .every(name => names.includes(name))) continue;
       snapshots.push({id:entry.name, revision:version, modified:(await lstat(folder)).mtimeMs});
     } catch { /* unrecognized/invalid backup is ignored */ }
   }

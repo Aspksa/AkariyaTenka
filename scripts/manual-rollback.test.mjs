@@ -18,6 +18,10 @@ test("manual rollback restores code but never changes data or env", async () => 
       await writeFile(path.join(root,name,"sample.txt"),"new");
       await writeFile(path.join(backup,name,"sample.txt"),"old");
     }
+    for(const name of ["package.json","package-lock.json","AKARIYA.bat"]){
+      await writeFile(path.join(root,name),"new");
+      await writeFile(path.join(backup,name),"old");
+    }
     await mkdir(path.join(root,"data"));
     await writeFile(path.join(root,"data","private.json"),"keep");
     await writeFile(path.join(root,".env"),"secret=keep");
