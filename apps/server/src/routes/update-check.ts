@@ -43,10 +43,17 @@ export function createUpdateCheckRoute(root: string, fetchImpl: typeof fetch = f
         if (!response.body) throw new Error("Empty release response");
         const chunks: Uint8Array[] = [];
         let total = 0;
-        for await (const chunk of response.body) {
-          total += chunk.byteLength;
-          if (total > MAX_RESPONSE) throw new Error("Oversized release metadata");
-          chunks.push(chunk);
+        const reader = response.body.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            total += value.byteLength;
+            if (total > MAX_RESPONSE) throw new Error("Oversized release metadata");
+            chunks.push(value);
+          }
+        } finally {
+          reader.releaseLock();
         }
         const json: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
         if (!json || typeof json !== "object") throw new Error("Invalid release metadata");
