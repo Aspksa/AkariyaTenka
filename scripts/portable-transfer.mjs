@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const OMIT = new Set(["node_modules", ".git", ".portable-transfer.lock"]);
+const PRIVATE_SUBTREES = new Set(["keys/private", "keys/secrets", ".keys/private", ".keys/secrets"]);
 const FORBIDDEN = new Set(["publisher-private.pem", "AKARIYA_RELEASE_SIGNING_KEY_PEM"]);
 function nested(parent, child) {
   const relative = path.relative(parent, child);
@@ -12,6 +13,8 @@ function nested(parent, child) {
 async function files(root, dir = root, list = []) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     if (OMIT.has(entry.name)) continue;
+    const relativeName = path.relative(root, path.join(dir, entry.name)).split(path.sep).join("/");
+    if (PRIVATE_SUBTREES.has(relativeName)) continue;
     if (FORBIDDEN.has(entry.name)) throw Error("Publisher private signing material must not be transferred");
     const full = path.join(dir, entry.name);
     const info = await lstat(full);
