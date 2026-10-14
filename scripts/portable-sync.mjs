@@ -4,6 +4,7 @@ import { constants } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { snapshotPortableFiles } from "./portable-transfer.mjs";
+import { assertSamePortableInstallation } from "./portable-identity.mjs";
 
 function assertDisjoint(a, b) {
   const relative = path.relative(a, b), reverse = path.relative(b, a);
@@ -13,6 +14,7 @@ function assertDisjoint(a, b) {
 export async function planPortableSync(source, destination) {
   const from = path.resolve(source), to = path.resolve(destination);
   assertDisjoint(from, to);
+  await assertSamePortableInstallation(from, to);
   const [left, right] = await Promise.all([snapshotPortableFiles(from), snapshotPortableFiles(to)]);
   const additions = Object.keys(left).filter(name => !(name in right)).sort();
   const conflicts = Object.keys(left).filter(name => name in right && left[name] !== right[name]).sort();
