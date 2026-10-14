@@ -1,6 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, createReadStream } from "node:fs";
 import { mkdir, readFile, writeFile, appendFile, rm, rename, lstat, readdir, copyFile, cp, statfs } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -38,7 +38,7 @@ export async function appendGithubUpdateEvent(event, revision, installRoot = roo
   await appendFile(file, JSON.stringify({ at: new Date().toISOString(), event, revision }) + "\n", { mode: 0o600 });
 }
 // Optional measurements never interrupt installation or recovery.
-async function recordTelemetry(event, revision, metrics = {}, installRoot = root) {
+export async function recordTelemetry(event, revision, metrics = {}, installRoot = root) {
   if (typeof event !== "string" || !/^[a-z_]{3,32}$/.test(event) ||
       (revision !== null && (typeof revision !== "string" || !SHA.test(revision)))) return;
   try {
@@ -156,6 +156,20 @@ async function download(sha, file) {
     }
   }
   throw lastError;
+}
+async function measureArchiveHash(file, sha) {
+  const start=performance.now();
+  let bytes=0;
+  const hash=createHash("sha256");
+  for await (const chunk of createReadStream(file)) {
+    hash.update(chunk);bytes+=chunk.length;
+  }
+  const digest=hash.digest("hex");
+  await recordTelemetry("archive_hashed",sha,{
+    bytes,durationMs:Math.max(1,Math.round(performance.now()-start)),
+    algorithm:"sha256", digest
+  });
+  // This measures local archive hashing; no trusted upstream digest is available for verification.
 }
 async function extractWindows(zip, destination) {
   const ps = path.join(root, "scripts", "github-extract.ps1");
@@ -407,6 +421,7 @@ export async function applyGithubUpdate(sha) {
     await tryHistory("download_started", sha);
     const updateStarted = performance.now();
     await download(sha, zip);
+    await measureArchiveHash(zip,sha);
     await writeProgress("validating");
     if (process.platform !== "win32") throw Error("GitHub ZIP installer currently supports Windows only");
     await extractWindows(zip, extracted);
