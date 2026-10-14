@@ -82,6 +82,29 @@ export function createHomeView():HomeView {
 
  const intro=el("section","intro");
  intro.append(el("p","section-kicker","ВАША СИСТЕМА · ПОД КОНТРОЛЕМ"),el("h1",undefined,"Добро пожаловать в Akariya."),el("p","intro-subtitle","Тихое пространство для управления, безопасности и развития вашей персональной системы."));
+ const updateNotice=el("button","nav-item");
+ updateNotice.type="button";
+ updateNotice.hidden=true;
+ updateNotice.setAttribute("aria-label","Открыть доступное обновление Akariya");
+ updateNotice.addEventListener("click",()=>{(tools.children[1] as HTMLButtonElement)?.click();});
+ async function checkUpdateNotice():Promise<void> {
+  if(document.visibilityState!=="visible")return;
+  try {
+   const response=await fetch("/api/updates/github",{cache:"no-store",signal:AbortSignal.timeout(8000)});
+   if(!response.ok)return;
+   const data=await response.json() as {latest?:string;updateAvailable?:boolean};
+   let deferred=false;
+   try {
+    const item=JSON.parse(localStorage.getItem("akariya-update-snooze")??"null") as {sha?:string;until?:number}|null;
+    deferred=item?.sha===data.latest && typeof item?.until==="number" && item.until>Date.now();
+   } catch {/* no saved preference */}
+   updateNotice.hidden=data.updateAvailable!==true || deferred;
+   if(!updateNotice.hidden) updateNotice.textContent="✦ Доступно обновление Akariya — посмотреть";
+  } catch {/* GitHub may be temporarily offline; never interrupt the home page */}
+ }
+ void checkUpdateNotice();
+ window.setInterval(()=>{void checkUpdateNotice();},30*60*1000);
+ document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")void checkUpdateNotice();});
  const status=el("section","status-card");
  const statusCaption=el("div","status-caption");
  statusCaption.append(el("span","status-icon","✦"),el("div","status-description"));
@@ -106,7 +129,7 @@ export function createHomeView():HomeView {
  });
  const bottom=el("div","bottom-line");
  bottom.append(el("span",undefined,"AKARIYA TENKA"),el("span",undefined,"CRIMSON · PRIVATE BY DESIGN"));
- workspace.append(mast,intro,status,actionHeader,cards,panels,bottom);
+ workspace.append(mast,intro,updateNotice,status,actionHeader,cards,panels,bottom);
  shell.append(aside,workspace);
  return {element:shell,update:(state)=>badge.update(state)};
 }
