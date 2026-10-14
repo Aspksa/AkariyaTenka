@@ -24,6 +24,30 @@ export interface HistoryMetrics {
   averageCodeLines: number|null; medianCodeLines: number|null;
   directories: number; averageFilesPerDirectory: number;
   markdownLines: number; jsonFiles: number; jsonBytes: number;
+  /** Project timeline: totals, rhythm by hour/weekday and a 26-week daily activity map. */
+  commits: number|null; authors: number|null;
+  firstCommitAt: string|null; lastCommitAt: string|null;
+  activeDays: number|null; longestStreak: number|null;
+  hours: number[]|null; weekdays: number[]|null;
+  activity: {date:string;commits:number}[]|null;
+}
+const dayKey=(d:Date):string=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+/** Commits per local calendar day for the last 26 full weeks, oldest first, starting on a Monday. */
+export function activityMap(timestamps:number[],now=new Date()):{date:string;commits:number}[]{
+ const counts=new Map<string,number>();
+ for(const t of timestamps)counts.set(dayKey(new Date(t*1000)),(counts.get(dayKey(new Date(t*1000)))??0)+1);
+ const start=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+ start.setDate(start.getDate()-((start.getDay()+6)%7)-25*7);
+ const days:{date:string;commits:number}[]=[];
+ for(const d=new Date(start);d<=now;d.setDate(d.getDate()+1))days.push({date:dayKey(d),commits:counts.get(dayKey(d))??0});
+ return days;
+}
+/** Longest run of consecutive local calendar days that contain at least one commit. */
+export function longestStreak(timestamps:number[]):number{
+ const days=[...new Set(timestamps.map(t=>{const d=new Date(t*1000);return Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/86400000;}))].sort((a,b)=>a-b);
+ let best=0,run=0;
+ for(let i=0;i<days.length;i++){run=i&&days[i]===days[i-1]!+1?run+1:1;best=Math.max(best,run);}
+ return best;
 }
 async function git(root:string,...args:string[]):Promise<string>{
  const {stdout}=await exec("git",["-C",root,...args],{timeout:45_000,maxBuffer:48*1024*1024,encoding:"utf8",windowsHide:true});
@@ -98,9 +122,31 @@ async function calculate(root:string):Promise<HistoryMetrics>{
   averageCodeLines:lineValues.length?Math.round(lineValues.reduce((a,b)=>a+b,0)/lineValues.length*10)/10:null,
   medianCodeLines:lineValues.length?median(lineValues):null,
   directories:dirs.size,averageFilesPerDirectory:directoryFiles.size?Math.round(valid.length/directoryFiles.size*10)/10:0,
-  markdownLines,jsonFiles,jsonBytes
+  markdownLines,jsonFiles,jsonBytes,
+  commits:null,authors:null,firstCommitAt:null,lastCommitAt:null,activeDays:null,longestStreak:null,
+  hours:null,weekdays:null,activity:null
  };
  if(!history)return base;
+ try{
+  // Rhythm of the project: distinct commits across all local refs, counted once each.
+  const log=await git(root,"log","--all","--format=%ct\t%aN");
+  const stamps:number[]=[];const people=new Set<string>();
+  for(const line of log.split(/\r?\n/u)){
+   const [time,name]=line.split("\t");const t=Number(time);
+   if(!Number.isFinite(t)||t<=0)continue;
+   stamps.push(t);if(name)people.add(name.trim().toLowerCase());
+  }
+  if(stamps.length){
+   const hours=Array.from({length:24},()=>0),weekdays=Array.from({length:7},()=>0);
+   for(const t of stamps){const d=new Date(t*1000);hours[d.getHours()]!++;weekdays[(d.getDay()+6)%7]!++;}
+   base.commits=stamps.length;base.authors=people.size;
+   base.firstCommitAt=new Date(stamps.reduce((a,b)=>Math.min(a,b))*1000).toISOString();
+   base.lastCommitAt=new Date(stamps.reduce((a,b)=>Math.max(a,b))*1000).toISOString();
+   base.activeDays=new Set(stamps.map(t=>dayKey(new Date(t*1000)))).size;
+   base.longestStreak=longestStreak(stamps);
+   base.hours=hours;base.weekdays=weekdays;base.activity=activityMap(stamps);
+  }else{base.commits=0;base.authors=0;}
+ }catch{/* rhythm is optional; the remaining history is still calculated */}
  try{
   // One history traversal for file births, deletions, modification frequency and line growth.
   const historyText=await git(root,"log","--all","--format=@@%ct","--name-status","--find-renames");

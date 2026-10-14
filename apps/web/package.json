@@ -9,6 +9,9 @@
   },
   "dependencies": {
     "@akariya/contracts": "*",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/onest": "^5.3.1",
+    "@fontsource-variable/unbounded": "^5.3.0",
     "zod": "^4.6.5"
   }
 }

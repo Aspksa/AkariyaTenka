@@ -156,8 +156,9 @@ export function createHttpApplication(
             response.end(result);return;
           }
           if (request.method === "GET" && url.pathname === "/api/assistant/status" && routes.assistantStatus) {
+            const body = await routes.assistantStatus();
             response.writeHead(200, {"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
-            response.end(await routes.assistantStatus()); return;
+            response.end(body); return;
           }
           if (request.method === "POST" && url.pathname === "/api/assistant/turn" && routes.assistantTurn) {
             const host = "127.0.0.1:" + config.port;
@@ -176,13 +177,15 @@ export function createHttpApplication(
             response.end(result); return;
           }
           if (request.method === "GET" && url.pathname === "/api/health") {
+            const body = await routes.health(context);
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-            response.end(await routes.health(context));
+            response.end(body);
             return;
           }
           if (request.method === "GET" && url.pathname === "/api/performance" && routes.performance !== undefined) {
+            const body = await routes.performance(context);
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-            response.end(await routes.performance(context));
+            response.end(body);
             return;
           }
           if (request.method === "GET" && url.pathname === "/api/updates/statistics/deep" && routes.deepStatistics) {
@@ -196,18 +199,21 @@ export function createHttpApplication(
             response.end(result);return;
           }
           if (request.method === "GET" && url.pathname === "/api/updates/github" && routes.githubUpdates) {
+            const body = await routes.githubUpdates();
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-            response.end(await routes.githubUpdates());
+            response.end(body);
             return;
           }
           if (request.method === "GET" && url.pathname === "/api/updates/backups" && routes.rollbackList) {
+            const body = await routes.rollbackList();
             response.writeHead(200, {"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
-            response.end(await routes.rollbackList());
+            response.end(body);
             return;
           }
           if (request.method === "GET" && url.pathname === "/api/updates/history" && routes.githubUpdateHistory) {
+            const body = await routes.githubUpdateHistory();
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-            response.end(await routes.githubUpdateHistory());
+            response.end(body);
             return;
           }
           if (url.pathname.startsWith("/api/")) {

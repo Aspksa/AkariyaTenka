@@ -239,4 +239,20 @@ describe("HTTP skeleton", () => {
     expect(response.status).toBe(400);
     expect(body.error?.code).toBe("VALIDATION");
   });
+
+  it("answers a failing GitHub check with an error instead of crashing on sent headers", async () => {
+    const webDist = await webFixture();
+    const server = createHttpApplication(
+      config(webDist),
+      { health: async () => "{}", githubUpdates: async () => { throw new Error("GitHub update check failed (HTTP 403)"); } },
+      new Logger("test", "silent")
+    );
+    const port = await listen(server);
+    const failed = await fetch("http://127.0.0.1:" + port + "/api/updates/github");
+    expect(failed.status).toBeGreaterThanOrEqual(500);
+    const body = await failed.json() as { error?: { code?: string } };
+    expect(body.error?.code).toBeDefined();
+    const healthy = await fetch("http://127.0.0.1:" + port + "/api/health");
+    expect(healthy.status).toBe(200);
+  });
 });
