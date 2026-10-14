@@ -3,8 +3,8 @@ export type NoticeKind="update"|"error"|"info";
 export interface Notice { id:string;kind:NoticeKind;title:string;detail:string;at:number;read:boolean }
 const KEY="akariya-notifications-v1";
 const SETTINGS_KEY="akariya-notification-settings-v1";
-export interface NoticeSettings {showUpdates:boolean;showErrors:boolean;showInfo:boolean;unreadOnly:boolean}
-const defaults:NoticeSettings={showUpdates:true,showErrors:true,showInfo:true,unreadOnly:false};
+export interface NoticeSettings {showUpdates:boolean;showErrors:boolean;showInfo:boolean;unreadOnly:boolean;sound:boolean;doNotDisturb:boolean;minimumPriority:"all"|"important"|"critical";retentionDays:7|30|90|0}
+const defaults:NoticeSettings={showUpdates:true,showErrors:true,showInfo:true,unreadOnly:false,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30};
 export function parseNoticeSettings(input:unknown):NoticeSettings {
  if(!input||typeof input!=="object"||Array.isArray(input))return {...defaults};
  const v=input as Record<string,unknown>;
@@ -12,7 +12,11 @@ export function parseNoticeSettings(input:unknown):NoticeSettings {
   showUpdates:typeof v.showUpdates==="boolean"?v.showUpdates:true,
   showErrors:typeof v.showErrors==="boolean"?v.showErrors:true,
   showInfo:typeof v.showInfo==="boolean"?v.showInfo:true,
-  unreadOnly:typeof v.unreadOnly==="boolean"?v.unreadOnly:false
+  unreadOnly:typeof v.unreadOnly==="boolean"?v.unreadOnly:false,
+  sound:typeof v.sound==="boolean"?v.sound:false,
+  doNotDisturb:typeof v.doNotDisturb==="boolean"?v.doNotDisturb:false,
+  minimumPriority:v.minimumPriority==="important"||v.minimumPriority==="critical"?v.minimumPriority:"all",
+  retentionDays:v.retentionDays===7||v.retentionDays===90||v.retentionDays===0?v.retentionDays:30
  };
 }
 
@@ -48,7 +52,7 @@ export function createNotificationCenter(openUpdates:()=>void){
  settingsPanel.className="notification-panel notification-settings";
  settingsPanel.hidden=true;settingsPanel.setAttribute("aria-label","Настройки уведомлений");
  const settingsTitle=document.createElement("strong");settingsTitle.textContent="Настройки уведомлений";settingsPanel.append(settingsTitle);
- const addSetting=(key:keyof NoticeSettings,label:string):void=>{
+ const addSetting=(key:"showUpdates"|"showErrors"|"showInfo"|"unreadOnly"|"sound"|"doNotDisturb",label:string):void=>{
   const row=document.createElement("label");row.className="notification-setting";
   const input=document.createElement("input");input.type="checkbox";input.checked=settings[key];
   input.addEventListener("change",()=>{
