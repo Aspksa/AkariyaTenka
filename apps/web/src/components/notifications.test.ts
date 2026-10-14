@@ -21,4 +21,8 @@ describe("notification persistence",()=>{
   expect(parseNoticeSettings({sound:true,doNotDisturb:true,minimumPriority:"critical",retentionDays:7})).toMatchObject({sound:true,doNotDisturb:true,minimumPriority:"critical",retentionDays:7});
   expect(parseNoticeSettings({sound:"yes",minimumPriority:"invalid",retentionDays:-1})).toMatchObject({sound:false,minimumPriority:"all",retentionDays:30,density:"expanded",opacity:100,fontScale:100});
  });
+ it("restores notification appearance preferences safely",()=>{
+  expect(parseNoticeSettings({density:"compact",opacity:70,fontScale:115})).toMatchObject({density:"compact",opacity:70,fontScale:115});
+  expect(parseNoticeSettings({density:"invalid",opacity:14,fontScale:800})).toMatchObject({density:"expanded",opacity:100,fontScale:100});
+ });
 });
