@@ -275,15 +275,15 @@ function openBrowser(url) {
   try {
     let child;
     if (process.platform === "win32") {
-      child = spawn(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `start "" "${url}"`], { stdio: "ignore", detached: true });
+      child = spawn("explorer.exe", [url], { stdio: "ignore", detached: true, windowsHide: true });
     } else if (process.platform === "darwin") {
       child = spawn("open", [url], { stdio: "ignore", detached: true });
     } else {
       child = spawn("xdg-open", [url], { stdio: "ignore", detached: true });
     }
-    child.on("error", () => {});
+    child.on("error", (error) => { warn(`Could not open browser automatically: ${error.message}. Open ${url} manually.`); });
     child.unref();
-  } catch { /* browser launch must never stop the server */ }
+  } catch (error) { warn(`Browser launch unavailable: ${error instanceof Error ? error.message : String(error)}. Open ${url} manually.`); }
 }
 
 function argsForRelaunch({ noOpen = false, port } = {}) {
