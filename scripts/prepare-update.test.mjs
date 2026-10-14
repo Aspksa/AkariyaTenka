@@ -48,6 +48,11 @@ test("archive inspector accepts required release format",()=>{
   assert.equal(entries.some(x=>x.path==="apps/server/dist/server.mjs"),true);
   assert.equal(entries.some(x=>x.path===".akariya-version"),false);
 });
+test("release ZIP dot-root paths are normalized",()=>{
+  const entries=inspectReleaseZip(archive([["./apps/server/dist/server.mjs","ok"]]));
+  assert.equal(entries[0].path,"apps/server/dist/server.mjs");
+  assert.throws(()=>inspectReleaseZip(archive([["./../evil","no"]])),/Unsafe ZIP path/);
+});
 test("archive inspector rejects traversal, protected paths and duplicates",()=>{
   for(const name of ["../oops",".env","data/history.json","C:/bad","a\\b"]) {
     assert.throws(()=>inspectReleaseZip(archive([[name,"bad"]])),/Unsafe ZIP path/);
