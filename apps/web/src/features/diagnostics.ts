@@ -12,20 +12,20 @@ function metric(label: string, value: string): HTMLDivElement {
 }
 
 export async function mountDiagnostics(container: HTMLElement): Promise<void> {
-  container.replaceChildren(metric("Status", "loading…"));
+  container.replaceChildren(metric("Статус", "загрузка…"));
   const controller = new AbortController();
 
   try {
     const snapshot = await getPerformance(controller.signal);
     const rssMiB = snapshot.memory.rssBytes / 1024 / 1024;
     container.replaceChildren(
-      metric("RSS", rssMiB.toFixed(1) + " MiB"),
-      metric("Event loop p95", snapshot.eventLoop.p95Ms.toFixed(2) + " ms"),
-      metric("Uptime", Math.round(snapshot.uptimeMs / 1000) + " s")
+      metric("Память (RSS)", rssMiB.toFixed(1) + " МиБ"),
+      metric("Задержка event loop, p95", snapshot.eventLoop.p95Ms.toFixed(2) + " мс"),
+      metric("Время работы", Math.round(snapshot.uptimeMs / 1000) + " с")
     );
   } catch (error) {
     container.replaceChildren(
-      metric("Diagnostics", error instanceof Error ? error.message : String(error))
+      metric("Диагностика", error instanceof Error ? error.message : String(error))
     );
   }
 }

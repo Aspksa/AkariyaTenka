@@ -8,13 +8,13 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   const message = document.createElement("p");
   const button = document.createElement("button");
   button.type = "button"; button.textContent = "Проверить обновления";
-  button.className = "nav-item";
+  button.className = "panel-button";
   const details = document.createElement("div");
   const link = document.createElement("a");
   link.target = "_blank"; link.rel = "noopener noreferrer";
   link.textContent = "Посмотреть изменения в GitHub";
   const install = document.createElement("button");
-  install.type = "button"; install.className = "nav-item";
+  install.type = "button"; install.className = "panel-button";
   install.textContent = "Установить обновление"; install.hidden = true;
   const rollbackTitle = document.createElement("h3");
   rollbackTitle.textContent = "Вернуть предыдущую версию";
@@ -29,7 +29,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
       for (const backup of backups) {
         if (!/^[a-f0-9-]{36}$/i.test(backup.id) || !/^[a-f0-9]{40}$/.test(backup.revision)) continue;
         const action = document.createElement("button");
-        action.className = "nav-item"; action.type = "button";
+        action.className = "panel-button"; action.type = "button";
         action.textContent = "Вернуть версию " + backup.revision.slice(0,12);
         action.addEventListener("click", () => {
           if (!confirm("Вернуть предыдущую версию Akariya? Текущие файлы приложения будут сохранены в резервной копии. Пользовательские данные останутся на месте.")) return;
@@ -62,7 +62,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   whatsNew.append(whatsNewTitle, changesList);
   const space = document.createElement("p");
   const later = document.createElement("button");
-  later.type = "button"; later.className = "nav-item";
+  later.type = "button"; later.className = "panel-button";
   later.textContent = "Напомнить завтра"; later.hidden = true;
   const progressBar = document.createElement("progress");
   progressBar.max = 100; progressBar.hidden = true;
