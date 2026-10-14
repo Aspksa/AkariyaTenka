@@ -57,8 +57,9 @@ export function createNotificationCenter(openUpdates:()=>void){
   const input=document.createElement("input");input.type="checkbox";input.checked=settings[key];
   input.addEventListener("change",()=>{
    settings={...settings,[key]:input.checked};
+   if(key==="sound"&&input.checked){try{audio??=new AudioContext();void audio.resume().catch(()=>{});}catch{/* unsupported */}}
    try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));}catch{/* storage unavailable */}
-   draw();
+   prune();draw();
   });
   const name=document.createElement("span");name.textContent=label;
   row.append(input,name);settingsPanel.append(row);
