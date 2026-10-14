@@ -49,9 +49,14 @@ an update or recovery is in progress.
 - The post-install health check verifies the backend. It does not prove all
   external integrations function correctly, so keep backups.
 
-The install button is deliberately unavailable if the currently installed
-revision cannot be established. In that case refresh the installation manually
-once to establish a known starting version.
+If the currently installed revision cannot be established (for example a copy
+downloaded as a ZIP archive), the panel offers **Установить последнюю версию**
+instead of a comparison. The preview link then opens the exact pinned revision
+on GitHub. The updater still saves the current files to a backup under
+`.runtime/github-updater/backups/` before installing and records
+`.akariya-version` afterwards, so later checks compare normally. That first
+backup has no known revision, so it is not offered by the rollback button;
+restore it manually from the backup folder if needed.
 
 ## Periodic checks and history
 

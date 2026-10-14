@@ -263,13 +263,16 @@ export function mountGithubUpdates(parent: HTMLElement): void {
         ? "Доступна новая версия Akariya."
         : state.updateAvailable === false
         ? "Установлена актуальная версия."
-        : "Версия этой копии не определена. Установите последнюю версию с GitHub: " +
-          "текущие файлы сохранятся в резервной копии.";
+        : "Версия этой копии не определена. Можно установить последнюю версию с GitHub. " +
+          "Текущие файлы сохранятся в резервной копии на диске, но вернуть их кнопкой отката нельзя: их версия неизвестна.";
       details.textContent = "Локальная: " + (state.current?.slice(0, 12) ?? "неизвестна") +
         " · GitHub: " + state.latest.slice(0, 12);
       // The URL is generated from a pinned official repository and vetted SHA values.
-      link.href = "https://github.com/Aspksa/AkariyaTenka/compare/" +
-        (state.current && /^[a-f0-9]{40}$/i.test(state.current) ? state.current : state.latest) + "...main";
+      // Without a known local base there is nothing to compare, so show the exact revision to be installed.
+      const base = state.current && /^[a-f0-9]{40}$/i.test(state.current) ? state.current : null;
+      link.href = "https://github.com/Aspksa/AkariyaTenka/" +
+        (base ? "compare/" + base + "...main" : "tree/" + state.latest);
+      link.textContent = base ? "Посмотреть изменения в GitHub" : "Открыть эту версию в GitHub";
       link.hidden = false;
       changesList.replaceChildren();
       const notes = (state.changes ?? []).slice(0, 8);
@@ -281,7 +284,8 @@ export function mountGithubUpdates(parent: HTMLElement): void {
       }
       if (!changesList.childElementCount) {
         const item = document.createElement("li");
-        item.textContent = "Описание изменений недоступно. Можно открыть сравнение в GitHub.";
+        item.textContent = base ? "Описание изменений недоступно. Можно открыть сравнение в GitHub."
+          : "Список изменений недоступен: версия этой копии неизвестна.";
         changesList.append(item);
       }
       if (typeof state.freeBytes === "number" && Number.isFinite(state.freeBytes)) {
