@@ -147,7 +147,7 @@ export function createNotificationCenter(openUpdates:()=>void){
   const severity=notices.some(n=>!n.read&&!n.archived&&n.kind==="error")?"critical":notices.some(n=>!n.read&&!n.archived&&n.kind==="update")?"warning":"none";
   dot.hidden=severity==="none";dot.dataset.severity=severity;
   wrapper.dataset.density=settings.density;
-  wrapper.style.setProperty("--notification-opacity",String(settings.opacity/100));
+  wrapper.style.setProperty("--notification-opacity",settings.opacity+"%");
   wrapper.style.setProperty("--notification-font-scale",String(settings.fontScale/100));
   for(const tab of tabs.querySelectorAll<HTMLButtonElement>(".notification-tab")){
    const selected=tab.dataset.tab===activeTab;tab.setAttribute("aria-selected",String(selected));tab.tabIndex=selected?0:-1;
