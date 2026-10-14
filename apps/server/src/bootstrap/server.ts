@@ -96,7 +96,7 @@ export function createHttpApplication(
           const expected = "127.0.0.1:" + config.port;
           if (!loopback || config.host !== "127.0.0.1" || !config.supervised || !config.supervisorToken || hostname !== expected ||
               origin !== "http://" + expected || request.headers["x-akariya-action"] !== "portable" ||
-              request.headers["content-type"]?.split(";")[0].trim() !== "application/json" ||
+              request.headers["content-type"]?.split(";")[0]?.trim() !== "application/json" ||
               routes.portableAction === undefined || routes.portableShutdown === undefined) {
             throw new AppError({ code: "PERMISSION", message: "Local supervised action required", correlationId: id });
           }
