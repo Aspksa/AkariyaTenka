@@ -16,6 +16,41 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   const install = document.createElement("button");
   install.type = "button"; install.className = "nav-item";
   install.textContent = "Установить обновление"; install.hidden = true;
+  const rollbackTitle = document.createElement("h3");
+  rollbackTitle.textContent = "Вернуть предыдущую версию";
+  const rollbackList = document.createElement("div");
+  const loadBackups = async (): Promise<void> => {
+    try {
+      const response = await fetch("/api/updates/backups", {cache:"no-store"});
+      if (!response.ok) throw Error("Backups unavailable");
+      const payload = await response.json() as {backups?:{id:string;revision:string}[]};
+      rollbackList.replaceChildren();
+      const backups = Array.isArray(payload.backups) ? payload.backups.slice(0,3) : [];
+      for (const backup of backups) {
+        if (!/^[a-f0-9-]{36}$/i.test(backup.id) || !/^[a-f0-9]{40}$/.test(backup.revision)) continue;
+        const action = document.createElement("button");
+        action.className = "nav-item"; action.type = "button";
+        action.textContent = "Вернуть версию " + backup.revision.slice(0,12);
+        action.addEventListener("click", () => {
+          if (!confirm("Вернуть предыдущую версию Akariya? Текущие файлы приложения будут сохранены в резервной копии. Пользовательские данные останутся на месте.")) return;
+          action.disabled = true;
+          const startedAt = Date.now();
+          message.textContent = "Восстановление начато. Akariya перезапустится…";
+          void fetch("/api/updates/rollback", {
+            method:"POST",
+            headers:{"content-type":"application/json","x-akariya-action":"github-rollback"},
+            body:JSON.stringify({id:backup.id})
+          }).then(response => {
+            if (!response.ok) throw Error("Не удалось начать восстановление: HTTP " + response.status);
+            message.textContent = "Ожидается перезапуск предыдущей версии…";
+            void watchInstall(backup.revision, startedAt);
+          }).catch(error => {message.textContent = String(error); action.disabled = false;});
+        });
+        rollbackList.append(action);
+      }
+      if (!rollbackList.childElementCount) rollbackList.textContent = "Доступных резервных копий пока нет.";
+    } catch { rollbackList.textContent = "Не удалось загрузить список резервных копий."; }
+  };
   const historyTitle = document.createElement("h3");
   historyTitle.textContent = "История обновлений";
   const historyList = document.createElement("ul");
@@ -34,7 +69,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   progressBar.setAttribute("aria-label", "Загрузка обновления");
   const report = document.createElement("p");
   parent.append(button, message, details, link, whatsNew, space,
-    install, later, progressBar, report, historyTitle, historyList);
+    install, later, progressBar, report, rollbackTitle, rollbackList, historyTitle, historyList);
   const snoozeKey = "akariya-update-snooze";
   function snoozed(sha: string): boolean {
     try {
@@ -233,7 +268,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
       message.textContent = "Не удалось проверить обновления: " +
         (error instanceof Error ? error.message : String(error));
       link.hidden = true; install.hidden = true;
-    } finally { inProgress = false; button.disabled = false; void loadHistory(); }
+    } finally { inProgress = false; button.disabled = false; void loadHistory(); void loadBackups(); }
   };
   button.addEventListener("click", () => { void check(); });
   const intervalMs = 30 * 60 * 1000;

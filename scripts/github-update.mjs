@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, writeFile, appendFile, rm, rename, lstat, readdir, copyFile, statfs } from "node:fs/promises";
+import { mkdir, readFile, writeFile, appendFile, rm, rename, lstat, readdir, copyFile, cp, statfs } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable, Transform } from "node:stream";
@@ -277,6 +277,85 @@ export async function recoverInterruptedUpdate(installRoot = root) {
   if (installRoot === root) try { await writeProgress("rolled_back"); } catch { /* history remains authoritative */ }
   return true;
 }
+export async function listManualRollbackBackups(installRoot = root) {
+  const directory = path.join(installRoot, ".runtime", "github-updater", "backups");
+  if (!await exists(directory)) return [];
+  await verifyUpdateFilesystem(installRoot);
+  const items = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(entry.name)) continue;
+    const folder = path.join(directory, entry.name);
+    await assertOrdinaryDirectory(folder);
+    const marker = path.join(folder, ".akariya-backup.json");
+    if (!await exists(marker)) continue;
+    const meta = await lstat(marker);
+    if (!meta.isFile() || meta.isSymbolicLink()) continue;
+    let record;
+    try { record = JSON.parse(await readFile(marker, "utf8")); } catch { continue; }
+    if (record?.kind !== "akariya-github-backup" || record?.schemaVersion !== 1) continue;
+    const versionFile = path.join(folder, ".akariya-version");
+    if (!await exists(versionFile)) continue;
+    const version = (await readFile(versionFile, "utf8")).trim();
+    if (!SHA.test(version)) continue;
+    items.push({ id: entry.name, revision: version, modified: (await lstat(folder)).mtimeMs });
+  }
+  return items.sort((a, b) => b.modified - a.modified).map(({ id, revision }) => ({ id, revision }));
+}
+
+export async function applyManualRollback(backupId, installRoot = root) {
+  if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(backupId))
+    throw Error("Invalid rollback identifier");
+  const stateDir = path.join(installRoot, ".runtime", "github-updater");
+  const lock = await acquireRuntimeLock(installRoot);
+  let pendingCreated = false;
+  try {
+    if (await pendingGithubUpdate(installRoot)) throw Error("Another update is pending");
+    const backups = await listManualRollbackBackups(installRoot);
+    const selected = backups.find(item => item.id === backupId);
+    if (!selected) throw Error("Rollback snapshot missing or invalid");
+    const original = path.join(stateDir, "backups", backupId);
+    const files = (await readdir(original)).filter(n => allowed.includes(n));
+    if (!files.includes("scripts") || !files.includes("apps") || !files.includes("packages"))
+      throw Error("Rollback snapshot incomplete");
+    for (const name of files) {
+      await verifyDestination(installRoot, name);
+      await visit(path.join(original, name), name).catch(async error => {
+        const info = await lstat(path.join(original, name));
+        if (!info.isFile() || info.isSymbolicLink()) throw error;
+      });
+    }
+    const current = path.join(stateDir, "backups", randomUUID());
+    await mkdir(current);
+    await writeFile(path.join(current, ".akariya-backup.json"),
+      JSON.stringify({ kind: "akariya-github-backup", schemaVersion: 1, previousVersion: "local" }) + "\n");
+    for (const versionMarker of [".akariya-version", ".akariya-build.json"]) {
+      if (await exists(path.join(installRoot, versionMarker)))
+        await copyFile(path.join(installRoot, versionMarker), path.join(current, versionMarker));
+    }
+    const existed = Object.fromEntries(await Promise.all(files.map(async name =>
+      [name, await exists(path.join(installRoot, name))])));
+    // Journal must exist before moving any installed path. On interrupted
+    // operation startup restores 'current' and keeps protected data untouched.
+    const pending = path.join(stateDir, "pending.json");
+    await writeFile(pending, JSON.stringify({ sha: selected.revision, backup: current, names: files, existed }) + "\n",
+      { flag: "wx", mode: 0o600 });
+    pendingCreated = true;
+    for (const name of files) {
+      if (existed[name]) await rename(path.join(installRoot, name), path.join(current, name));
+      await cp(path.join(original, name), path.join(installRoot, name), { recursive: true, force: false, errorOnExist: true });
+    }
+    await writeFile(path.join(installRoot, ".akariya-version"), selected.revision + "\n");
+    await rm(path.join(installRoot, ".akariya-build.json"), { force: true });
+    await tryHistory("prepared", selected.revision, installRoot);
+    return selected.revision;
+  } catch (error) {
+    if (pendingCreated) await recoverInterruptedUpdate(installRoot);
+    throw error;
+  } finally {
+    await lock();
+  }
+}
+
 export async function applyGithubUpdate(sha) {
   if (!SHA.test(sha)) throw Error("Invalid pinned GitHub commit SHA");
   await mkdir(state, { recursive: true });
@@ -364,6 +443,8 @@ export async function applyGithubUpdate(sha) {
   }
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  applyGithubUpdate(process.argv[2] ?? "").then(ok => { process.exitCode = ok ? 0 : 1; })
+  (process.argv[2] === "--rollback"
+    ? applyManualRollback(process.argv[3] ?? "").then(() => true)
+    : applyGithubUpdate(process.argv[2] ?? "")).then(ok => { process.exitCode = ok ? 0 : 1; })
     .catch(error => { console.error(error); process.exitCode = 1; });
 }
