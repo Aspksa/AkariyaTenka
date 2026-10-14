@@ -23,6 +23,25 @@ describe("web runtime performance primitives", () => {
     expect(values).toEqual([3]);
   });
 
+  it("calls the browser frame scheduler unbound by default", () => {
+    // Browsers throw "Illegal invocation" when requestAnimationFrame runs with a foreign `this`.
+    const scope = globalThis as { requestAnimationFrame?: unknown; cancelAnimationFrame?: unknown };
+    const original = [scope.requestAnimationFrame, scope.cancelAnimationFrame];
+    scope.requestAnimationFrame = function (this: unknown, next: FrameRequestCallback): number {
+      if (this !== undefined && this !== globalThis) throw new TypeError("Illegal invocation");
+      next(0);
+      return 1;
+    };
+    scope.cancelAnimationFrame = () => {};
+    try {
+      const values: number[] = [];
+      new FrameBatcher((value: number) => values.push(value)).push(7);
+      expect(values).toEqual([7]);
+    } finally {
+      [scope.requestAnimationFrame, scope.cancelAnimationFrame] = original;
+    }
+  });
+
   it("coalesces streamed text chunks into one render per frame", () => {
     const chunks: string[] = [];
     let callback: FrameRequestCallback | undefined;

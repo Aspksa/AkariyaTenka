@@ -60,8 +60,13 @@ export function createHomeView():HomeView {
   {name:"Обновления GitHub",symbol:"refresh" as const,loader:()=>import("../features/github-updates.js").then(m=>m.mountGithubUpdates),caption:"Проверка новых изменений проекта"}
  ];
  const workspace=el("section","content");
+ const pageTitle=el("h2","page-title","Обзор");
  const notifications=createNotificationCenter(()=>{(tools.children[1] as HTMLButtonElement)?.click();});
  function highlight(active:HTMLButtonElement|null):void {
+  pageTitle.textContent=active?.getAttribute("aria-label")??"Обзор";
+  const openTool=active?Array.from(tools.children).indexOf(active):-1;
+  for(const card of cards.querySelectorAll<HTMLElement>(".action-card"))
+   card.classList.toggle("is-open",Number(card.dataset.tool)===openTool);
   for(const other of [topLink,...Array.from(tools.querySelectorAll<HTMLButtonElement>("button"))]){
    other.classList.toggle("active",other===active);
    if(other===active)other.setAttribute("aria-current","page");
@@ -77,7 +82,15 @@ export function createHomeView():HomeView {
   panel.hidden=true;
   panel.setAttribute("aria-label",info.name);
   const panelHeader=el("div","panel-head");
-  panelHeader.append(el("div",undefined,info.name),el("p",undefined,info.caption));
+  const panelIcon=el("span","panel-icon");panelIcon.append(createIcon(info.symbol));panelIcon.setAttribute("aria-hidden","true");
+  panelHeader.append(panelIcon);
+  const panelTitle=el("div","panel-title");
+  panelTitle.append(el("div",undefined,info.name),el("p",undefined,info.caption));
+  const closePanel=el("button","panel-close");closePanel.type="button";
+  closePanel.title="Закрыть";closePanel.setAttribute("aria-label","Закрыть раздел «"+info.name+"»");
+  closePanel.append(createIcon("close"));
+  closePanel.addEventListener("click",()=>{button.click();button.focus();});
+  panelHeader.append(panelTitle,closePanel);
   const area=el("div","panel-body");
   panel.append(panelHeader,area);
   let loaded=false;
@@ -107,16 +120,21 @@ export function createHomeView():HomeView {
  });
  const sidebarFoot=el("div","sidebar-foot");
  sidebarFoot.append(el("span","online-dot"),el("span",undefined,"ЛОКАЛЬНАЯ СИСТЕМА"));
- aside.append(branding,nav,sidebarFoot);
+ const sidebarInner=el("div","sidebar-inner");
+ sidebarInner.append(branding,nav,sidebarFoot);
+ aside.append(sidebarInner);
 
  const mast=el("header","masthead");
- const crumb=el("span","breadcrumb","РАБОЧЕЕ ПРОСТРАНСТВО  /  ОБЗОР");
+ const mastBrand=el("img","mast-brand") as HTMLImageElement;
+ mastBrand.src="/akariya-fox.svg";mastBrand.alt="";mastBrand.width=34;mastBrand.height=34;
+ const mastTitle=el("div","mast-title");
+ mastTitle.append(el("span","breadcrumb","Рабочее пространство"),pageTitle);
  const mastRight=el("div","mast-right");
- mastRight.append(notifications.element,el("span","system-label","AKARIYA  ·  v0.1"));
- mast.append(crumb,mastRight);
+ mastRight.append(el("span","system-label","v0.1"),notifications.element);
+ mast.append(mastBrand,mastTitle,mastRight);
 
  const intro=el("section","intro");
- intro.append(el("p","section-kicker","ВАША СИСТЕМА · ПОД КОНТРОЛЕМ"),el("h1",undefined,"Добро пожаловать в Akariya."),el("p","intro-subtitle","Тихое пространство для управления, безопасности и развития вашей персональной системы."));
+ intro.append(el("p","section-kicker","Ваша система · под контролем"),el("h1",undefined,"Добро пожаловать в Akariya."),el("p","intro-subtitle","Тихое пространство для управления, безопасности и развития вашей персональной системы."));
  const updateNotice=el("button","update-notice");
  updateNotice.type="button";
  updateNotice.hidden=true;
@@ -148,11 +166,14 @@ export function createHomeView():HomeView {
  window.addEventListener("akariya-update-snooze",()=>{void checkUpdateNotice();});
  const status=el("section","status-card");
  const statusCaption=el("div","status-caption");
- statusCaption.append(el("span","status-icon","✦"),el("div","status-description"));
+ const statusIcon=el("span","status-icon");statusIcon.append(createIcon("shield"));statusIcon.setAttribute("aria-hidden","true");
+ statusCaption.append(statusIcon,el("div","status-description"));
  const statusDescription=statusCaption.lastElementChild as HTMLElement;
- statusDescription.append(el("span","tiny-label","СОСТОЯНИЕ ЯДРА"),el("strong",undefined,"Системная готовность"));
+ statusDescription.append(el("span","tiny-label","Состояние ядра"),el("strong",undefined,"Системная готовность"));
  const badge=createHealthBadge();
- status.append(statusCaption,badge.element);
+ const statusFoot=el("div","status-foot");
+ statusFoot.append(badge.element,el("p","status-note","Akariya работает локально: данные остаются на этом устройстве."));
+ status.append(statusCaption,statusFoot);
 
  const actionHeader=el("div","section-title");
  actionHeader.append(el("h2",undefined,"Центр управления"));
@@ -180,11 +201,14 @@ export function createHomeView():HomeView {
    const data=actions[id];
    const hidden=preferences.hidden.includes(id);
    if(!hidden){
-    const card=el("button","action-card");card.type="button";
+    const card=el("button","action-card");card.type="button";card.dataset.tool=String(data.tool);
+    const current=tools.querySelector('[aria-expanded="true"]');
+    card.classList.toggle("is-open",!!current&&Array.from(tools.children).indexOf(current)===data.tool);
     const emblem=el("span","card-icon");
     emblem.append(createIcon(id==="diagnostics"?"activity":"refresh"));
     card.append(el("span","card-index",data.index),emblem,el("strong","card-name",data.name),
-      el("span","card-detail",data.detail),el("span","card-arrow","↗"));
+      el("span","card-detail",data.detail),el("span","card-arrow"));
+    card.lastElementChild?.append(createIcon("arrow-right"));
     card.addEventListener("click",()=>{(tools.children[data.tool] as HTMLButtonElement).click();});
     cards.append(card);
    }
@@ -211,9 +235,11 @@ export function createHomeView():HomeView {
   customize.setAttribute("aria-expanded",String(!editor.hidden));
  });
  renderDashboard();
- const bottom=el("div","bottom-line");
- bottom.append(el("span",undefined,"AKARIYA TENKA"),el("span",undefined,"CRIMSON · PRIVATE BY DESIGN"));
- workspace.append(mast,intro,updateNotice,status,actionHeader,dashboardControls,cards,panels,bottom);
+ const bottom=el("footer","bottom-line");
+ bottom.append(el("span",undefined,"Akariya Tenka"),el("span",undefined,"Crimson · private by design"));
+ const hero=el("section","hero");
+ hero.append(intro,status);
+ workspace.append(mast,updateNotice,hero,actionHeader,dashboardControls,cards,panels,bottom);
  shell.append(aside,workspace);
  return {element:shell,update:(state)=>{
   badge.update(state);

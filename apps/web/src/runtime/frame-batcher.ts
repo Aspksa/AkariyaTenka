@@ -7,8 +7,8 @@ export class FrameBatcher<T> {
 
   constructor(
     private readonly apply: (value: T) => void,
-    private readonly schedule: FrameScheduler = requestAnimationFrame,
-    private readonly cancelScheduled: FrameCanceller = cancelAnimationFrame
+    private readonly schedule: FrameScheduler = (callback) => requestAnimationFrame(callback),
+    private readonly cancelScheduled: FrameCanceller = (handle) => cancelAnimationFrame(handle)
   ) {}
 
   push(value: T): void {
