@@ -1,6 +1,6 @@
 import { createIcon } from "./icons.js";
 export type NoticeKind="update"|"error"|"info";
-export interface Notice { id:string;kind:NoticeKind;title:string;detail:string;at:number;read:boolean }
+export interface Notice { id:string;kind:NoticeKind;title:string;detail:string;at:number;read:boolean;archived?:boolean }
 const KEY="akariya-notifications-v1";
 const SETTINGS_KEY="akariya-notification-settings-v1";
 export interface NoticeSettings {showUpdates:boolean;showErrors:boolean;showInfo:boolean;unreadOnly:boolean;sound:boolean;doNotDisturb:boolean;minimumPriority:"all"|"important"|"critical";retentionDays:7|30|90|0}
