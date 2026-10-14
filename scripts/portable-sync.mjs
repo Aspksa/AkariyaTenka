@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { snapshotPortableFiles } from "./portable-transfer.mjs";
 import { assertSamePortableInstallation } from "./portable-identity.mjs";
+import { withPortableSyncLocks } from "./portable-sync-lock.mjs";
 
 function assertDisjoint(a, b) {
   const relative = path.relative(a, b), reverse = path.relative(b, a);
@@ -27,6 +28,7 @@ export async function planPortableSync(source, destination) {
 export async function syncPortableAdditions(source, destination, { acknowledgeStopped = false } = {}) {
   if (!acknowledgeStopped) throw Error("Explicit confirmation that both copies are stopped is required");
   const from = path.resolve(source), to = path.resolve(destination);
+  return withPortableSyncLocks([from,to], async () => {
   const plan = await planPortableSync(from, to);
   if (plan.conflicts.length) throw Error("Conflicting modified files: synchronize manually before copying");
   // Snapshot just before writing to detect source changes.
@@ -52,6 +54,7 @@ export async function syncPortableAdditions(source, destination, { acknowledgeSt
     // Created files are safely additive and can be inspected/reconciled on retry.
     throw Error("Sync interrupted after adding " + written.length + " files: " + error.message);
   }
+  });
 }
 const self = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 if (self) {
