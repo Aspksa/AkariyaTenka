@@ -1,0 +1,23 @@
+name: Temporary PR 56 cleanup
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cleanup-journal-branch.yml"
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = await github.rest.pulls.get({owner: context.repo.owner, repo: context.repo.repo, pull_number: 56});
+            if (!pr.data.merged || pr.data.base.ref !== 'main' ||
+                pr.data.head.ref !== 'fix/github-updater-journal-hardening' ||
+                pr.data.head.sha !== '0ae08718b0195660adad4834b9b605bd290e7bc3') {
+              core.setFailed('Unexpected PR state; deletion refused'); return;
+            }
+            await github.rest.git.deleteRef({owner: context.repo.owner, repo: context.repo.repo, ref: 'heads/fix/github-updater-journal-hardening'});
