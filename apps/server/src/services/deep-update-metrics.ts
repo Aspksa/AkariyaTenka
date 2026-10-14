@@ -70,7 +70,7 @@ async function calculate(root:string):Promise<DeepMetrics>{
  }catch{/* package unavailable */}
  let hasHistory=false,king:string|null=null,bigBang:string|null=null,bigDay:string|null=null,favorite:string|null=null,magic:string|null=null;
  let cold:number|null=null,ancient:number|null=null;let removedFunctions:string|null=null;
- let branches:number|null=null,releases:number|null=null,prs:number|null=null;
+ let branches:number|null=null;
  try{
   hasHistory=(await git(rootPath,["rev-parse","--is-inside-work-tree"])).trim()==="true";
   if(hasHistory){
