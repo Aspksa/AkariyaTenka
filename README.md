@@ -49,3 +49,5 @@ Open `http://127.0.0.1:4173`.
 `GET /api/health` returns the runtime health report.
 
 See `docs/architecture.md`, `docs/security-model.md`, `docs/persistence.md` and `docs/development.md` before adding a domain.
+
+GitHub version checks are available in the dashboard (see [GitHub update detection](docs/github-update-check.md)). They do not automatically install or execute upstream changes.
