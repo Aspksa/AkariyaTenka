@@ -45,7 +45,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
           const startedAt = Date.now();
           message.textContent = "Восстановление начато. Akariya перезапустится…";
           track(backup.revision,startedAt,"rollback");
-          notify("rollback:started:"+backup.revision,"info","Запрошен откат","Akariya готовится восстановить предыдущую версию.");
+          notify("rollback:state:"+backup.revision,"info","Запрошен откат","Akariya готовится восстановить предыдущую версию.");
           void fetch("/api/updates/rollback", {
             method:"POST",
             headers:{"content-type":"application/json","x-akariya-action":"github-rollback"},
@@ -56,7 +56,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
             void watchInstall(backup.revision, startedAt);
           }).catch(error => {message.textContent = String(error); action.disabled = false;
             untrack();
-            notify("rollback:error:"+backup.revision,"error","Откат не запущен",String(error).slice(0,250));});
+            notify("rollback:state:"+backup.revision,"error","Откат не запущен",String(error).slice(0,250));});
         });
         rollbackList.append(action);
       }
@@ -172,7 +172,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
             " с · Проверка запуска пройдена";
           message.textContent = "Akariya успешно обновлена. Открываю новую версию…";
           untrack();
-          notify("update:confirmed:"+sha,"info","Обновление завершено","Новая версия "+sha.slice(0,12)+" успешно установлена.");
+          notify("update:state:"+sha,"info","Обновление завершено","Новая версия "+sha.slice(0,12)+" успешно установлена.");
           window.location.reload();
           return;
         }
@@ -184,7 +184,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
             ? "Обновление не удалось. Предыдущая версия восстановлена."
             : "Обновление не установлено. Проверьте журнал обновлений.";
           untrack();
-          notify("update:"+outcome+":"+sha,"error","Обновление не установлено",(message.textContent??"Проверьте историю обновлений.").slice(0,250));
+          notify("update:state:"+sha,"error","Обновление не установлено",(message.textContent??"Проверьте историю обновлений.").slice(0,250));
           installing = false;
           button.disabled = false;
           install.disabled = false;
@@ -228,7 +228,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
     report.textContent = "";
     message.textContent = "Запускаю обновление. Не закрывайте AKARIYA.bat.";
     track(sha,startedAt,"install");
-    notify("update:started:"+sha,"info","Установка обновления","Начата установка версии "+sha.slice(0,12)+".");
+    notify("update:state:"+sha,"info","Установка обновления","Начата установка версии "+sha.slice(0,12)+".");
     void (async () => {
       try {
         const response = await fetch("/api/updates/install", {
@@ -263,7 +263,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
         } else {
           message.textContent = error instanceof Error ? error.message : String(error);
           untrack();
-          notify("update:rejected:"+sha,"error","Установка отклонена",(message.textContent??"Не удалось запустить обновление.").slice(0,250));
+          notify("update:state:"+sha,"error","Установка отклонена",(message.textContent??"Не удалось запустить обновление.").slice(0,250));
           installing = false;
           button.disabled = false;
           install.disabled = false;
