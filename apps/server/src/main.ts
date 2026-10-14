@@ -51,7 +51,7 @@ async function main(): Promise<void> {
     config,
     {
       health: createHealthRoute(health),
-      assistantStatus: async () => JSON.stringify({configured: Boolean(process.env.AKARIYA_AI_API_KEY && process.env.AKARIYA_AI_MODEL), model: process.env.AKARIYA_AI_MODEL ?? null, memory: true}),
+      assistantStatus: async () => JSON.stringify({configured: Boolean(process.env.AKARIYA_CLOUDRU_API_KEY || (process.env.AKARIYA_AI_API_KEY && process.env.AKARIYA_AI_MODEL)), provider: process.env.AKARIYA_CLOUDRU_API_KEY ? "Cloud.ru" : "OpenAI-compatible", model: process.env.AKARIYA_CLOUDRU_API_KEY ? (process.env.AKARIYA_CLOUDRU_MODEL || "ai-sage/GigaChat3-10B-A1.8B") : (process.env.AKARIYA_AI_MODEL ?? null), memory: true}),
       assistantTurn: async (payload, context) => {
         const input = payload as {text?:unknown;sessionId?:unknown};
         if (!input || typeof input.text !== "string" || input.text.length > 8000 || (input.sessionId !== undefined && typeof input.sessionId !== "string"))
