@@ -24,13 +24,13 @@ export async function withPortableSyncLocks(roots, task) {
         if (error.code === "EEXIST") throw Error("Portable synchronization already locked: " + root);
         throw error;
       }
-      await refuseActiveRuntime(root);
       const nonce = randomUUID();
       acquired.push({lock, nonce, owned: false});
       await writeFile(path.join(lock, "owner.json"),
         JSON.stringify({schemaVersion:1,nonce,pid:process.pid,createdAt:new Date().toISOString()})+"\n",
         { flag: "wx", mode: 0o600 });
       acquired[acquired.length - 1].owned = true;
+      await refuseActiveRuntime(root);
     }
     for (const root of resolved) await refuseActiveRuntime(root);
     return await task();
