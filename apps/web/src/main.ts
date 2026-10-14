@@ -1,3 +1,6 @@
+import "@fontsource-variable/onest";
+import "@fontsource-variable/unbounded";
+import "@fontsource-variable/jetbrains-mono";
 import "./styles.css";
 import { mountAssistantAvatar } from "./features/assistant-chat.js";
 import { getHealth } from "./api/health.js";

@@ -1,3 +1,4 @@
+import { createIcon, type IconName } from "../components/icons.js";
 import { updateOutcome, updateProgress, type UpdateEvent } from "./update-progress.js";
 type UpdateStatus = {
   repository: string; branch: string; current: string | null;
@@ -38,12 +39,18 @@ export function mountGithubUpdates(parent: HTMLElement): void {
         if (!/^[a-f0-9-]{36}$/i.test(backup.id) || !/^[a-f0-9]{40}$/.test(backup.revision)) continue;
         const action = document.createElement("button");
         action.className = "panel-button"; action.type = "button";
-        action.textContent = "Вернуть версию " + backup.revision.slice(0,12);
+        const actionLabel = document.createElement("span");
+        actionLabel.append("Вернуть версию ");
+        const actionCode = document.createElement("code");
+        actionCode.textContent = backup.revision.slice(0,12);
+        actionLabel.append(actionCode);
+        action.append(createIcon("history"), actionLabel);
         action.addEventListener("click", () => {
           if (!confirm("Вернуть предыдущую версию Akariya? Текущие файлы приложения будут сохранены в резервной копии. Пользовательские данные останутся на месте.")) return;
           action.disabled = true;
           const startedAt = Date.now();
           message.textContent = "Восстановление начато. Akariya перезапустится…";
+          setState("busy");
           track(backup.revision,startedAt,"rollback");
           notify("rollback:state:"+backup.revision,"info","Запрошен откат","Akariya готовится восстановить предыдущую версию.");
           void fetch("/api/updates/rollback", {
@@ -93,122 +100,46 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   report.className = "update-report";
   button.classList.add("ghost");
   const actions = block("update-actions", install, later, button);
-  const summary = block("update-card update-summary", message, details, actions, progressBar, report, space);
-  whatsNew.className = "update-card";
+  // Status orb: a large animated glyph that mirrors the current update state at a glance.
+  const orb = document.createElement("span");
+  orb.className = "update-orb"; orb.setAttribute("aria-hidden", "true");
+  const kicker = document.createElement("span");
+  kicker.className = "update-kicker"; kicker.textContent = "GitHub · main";
+  const summaryText = block("update-summary-text", kicker, message, details);
+  const summaryHead = block("update-summary-head", orb, summaryText);
+  const summary = block("update-card update-summary", summaryHead, actions, progressBar, report, space);
+  const setState = (state: "checking" | "available" | "current" | "unknown" | "error" | "busy"): void => {
+    const glyph: Record<typeof state, IconName> = {
+      checking: "refresh", available: "arrow-up", current: "check", unknown: "info", error: "alert", busy: "download"
+    };
+    summary.dataset.state = state;
+    orb.replaceChildren(createIcon(glyph[state]));
+  };
+  setState("checking");
+  const withIcon = (target: HTMLButtonElement, name: IconName): void => {
+    const label = document.createElement("span");
+    label.textContent = target.textContent;
+    target.replaceChildren(createIcon(name), label);
+  };
+  withIcon(install, "download"); withIcon(later, "clock"); withIcon(button, "refresh");
+  const setInstallLabel = (text: string): void => { install.lastElementChild!.textContent = text; };
+  whatsNew.className = "update-card update-whats-new";
+  whatsNewTitle.prepend(createIcon("sparkles"));
+  rollbackTitle.prepend(createIcon("lifebuoy"));
+  historyTitle.prepend(createIcon("history"));
+  historyList.className = "update-timeline";
+  link.className = "update-link";
   whatsNew.append(link);
   const backups = block("update-card", rollbackTitle, rollbackList);
   const history = block("update-card", historyTitle, historyList);
   parent.classList.add("updates-page");
   parent.append(summary, whatsNew, block("update-grid", backups, history));
-  const statistics=document.createElement("section");statistics.className="update-card";
-  const statsTitle=document.createElement("h3");statsTitle.textContent="📚 История проекта в цифрах";
-  const statsNote=document.createElement("p");statsNote.textContent="Расчёт по истории Git и текущим файлам. Загрузка…";
-  const statsGrid=document.createElement("div");statsGrid.className="akariya-git-stat-grid";
-  const refreshStats=document.createElement("button");refreshStats.type="button";refreshStats.className="panel-button ghost";refreshStats.textContent="Обновить статистику";
-  statistics.append(statsTitle,statsNote,refreshStats,statsGrid);
-  parent.insertBefore(statistics,parent.lastElementChild);
-  const displayNumber=(v:number|null|undefined)=>typeof v==="number"?v.toLocaleString("ru-RU"):"Нет данных";
-  const statsMotion=()=>!window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const statsFormat=new Intl.NumberFormat("ru-RU");
-  const showMetric=(symbol:string,title:string,value:string,description:string):void=>{
-    const box=document.createElement("article");box.className="akariya-git-stat akariya-git-stat-animated";
-    const position=statsGrid.childElementCount;
-    box.style.setProperty("--stat-delay",Math.min(position,14)*55+"ms");
-    const heading=document.createElement("strong");heading.textContent=symbol+" "+title;
-    const metric=document.createElement("p");metric.className="akariya-git-stat-value";
-    metric.textContent=value;
-    // Animate only genuine integer metric values, never dates, paths or missing statistics.
-    const numberMatch=/^([0-9][0-9\\s\\u00a0\\u202f]*)(.*)$/u.exec(value);
-    if(numberMatch&&statsMotion()){
-      const raw=numberMatch[1]!.replace(/\\s/gu,"");
-      const target=Number(raw);
-      if(Number.isSafeInteger(target)&&target>=0&&target<=1_000_000_000_000){
-        const suffix=numberMatch[2]??"";
-        const duration=1150;
-        metric.textContent="0"+suffix;
-        const startedAt=performance.now()+Math.min(position,14)*55;
-        const tick=(now:number):void=>{
-          if(!box.isConnected)return;
-          const fraction=Math.min(1,Math.max(0,(now-startedAt)/duration));
-          const eased=1-Math.pow(1-fraction,4);
-          metric.textContent=statsFormat.format(Math.round(target*eased))+suffix;
-          if(fraction<1)requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
-      }
-    }
-    const detail=document.createElement("small");detail.textContent=description;
-    box.append(heading,metric,detail);statsGrid.append(box);
-  };
-  let loadingStats=false;
-  const loadStatistics=async():Promise<void>=>{
-    if(loadingStats)return;loadingStats=true;refreshStats.disabled=true;statsNote.textContent="Подсчёт Git-статистики…";
-    try{
-      const res=await fetch("/api/updates/statistics",{cache:"no-store",signal:AbortSignal.timeout(60000)});
-      if(!res.ok)throw Error("HTTP "+res.status);
-      const data=await res.json() as {
-        available:boolean;reason?:string;wordsAdded:number|null;wordsDeleted:number|null;wordsRewritten:number|null;
-        newFiles:number|null;deletedFiles:number|null;largestFile:{path:string;lines:number}|null;
-        smallestCodeFile:{path:string;lines:number}|null;oldestUntouchedFile:{path:string;lastChanged:string}|null;
-        hottestFile:{path:string;commits:number}|null;biggestGrowth:{path:string;netLines:number}|null;
-        languages:{extension:string;lines:number}[];averageCodeLines:number|null;medianCodeLines:number|null;
-        directories:number;averageFilesPerDirectory:number;markdownLines:number;jsonFiles:number;jsonBytes:number;
-      };
-      statsGrid.replaceChildren();
-      statsNote.textContent=data.available?"История: вся доступная локальная Git-история. Текущие файлы: отслеживаемые Git.":data.reason??"История Git недоступна";
-      showMetric("🌱","Сколько слов родилось",displayNumber(data.wordsAdded),"Добавленные слова в Git word-diff");
-      showMetric("✂️","Сколько слов исчезло",displayNumber(data.wordsDeleted),"Удалённые слова в Git word-diff");
-      showMetric("🔄","Переписанная история",displayNumber(data.wordsRewritten),"Оценка заменённых слов по блокам diff");
-      showMetric("🍼","Новорождённые файлы",displayNumber(data.newFiles),"Git-события добавления файлов");
-      showMetric("💀","Кладбище файлов",displayNumber(data.deletedFiles),"Git-события удаления файлов");
-      showMetric("🏋️","Файл-гигант",data.largestFile?data.largestFile.lines+" строк": "Нет данных",data.largestFile?.path??"");
-      showMetric("🐜","Самый маленький",data.smallestCodeFile?data.smallestCodeFile.lines+" строк":"Нет данных",data.smallestCodeFile?.path??"");
-      showMetric("🏚️","Старожил проекта",data.oldestUntouchedFile?new Date(data.oldestUntouchedFile.lastChanged).toLocaleDateString("ru-RU"):"Нет данных",data.oldestUntouchedFile?.path??"");
-      showMetric("🔥","Горячий файл",data.hottestFile?displayNumber(data.hottestFile.commits)+" изменений":"Нет данных",data.hottestFile?.path??"");
-      showMetric("🌱","Самый выросший",data.biggestGrowth?displayNumber(data.biggestGrowth.netLines)+" строк":"Нет данных",data.biggestGrowth?.path??"");
-      showMetric("🎨","Языки проекта",data.languages.slice(0,8).map(x=>x.extension+" "+displayNumber(x.lines)).join(" · ")||"Нет данных","Строки по расширениям в текущем коде");
-      showMetric("📏","Средний файл",displayNumber(data.averageCodeLines)+" / "+displayNumber(data.medianCodeLines),"Среднее / медиана строк кода");
-      showMetric("🗂️","Папки",displayNumber(data.directories),displayNumber(data.averageFilesPerDirectory)+" файлов на каталог в среднем");
-      showMetric("📝","Документация",displayNumber(data.markdownLines)+" строк","Текущие файлы .md");
-      showMetric("🗃️","Данные JSON",displayNumber(data.jsonFiles)+" файлов",displayNumber(data.jsonBytes)+" байт");
-    }catch(e){statsNote.textContent="Не удалось получить статистику: "+(e instanceof Error?e.message:String(e));}
-    finally{loadingStats=false;refreshStats.disabled=false;}
-  };
-  refreshStats.addEventListener("click",()=>{void loadStatistics();});
-
-  const deepSection=document.createElement("section");deepSection.className="update-card";
-  const deepHeading=document.createElement("h3");deepHeading.textContent="🔬 Углублённая аналитика проекта";
-  const deepStatus=document.createElement("p");deepStatus.textContent="История, код и измерения обновлений";
-  const deepRefresh=document.createElement("button");deepRefresh.type="button";deepRefresh.className="panel-button ghost";deepRefresh.textContent="Рассчитать дополнительные показатели";
-  const deepGroups=document.createElement("div");
-  deepSection.append(deepHeading,deepStatus,deepRefresh,deepGroups);
-  parent.insertBefore(deepSection,parent.lastElementChild);
-  let deepPending=false;
-  async function loadDeep():Promise<void>{
-   if(deepPending)return;deepPending=true;deepRefresh.disabled=true;deepStatus.textContent="Вычисление показателей…";
-   try{
-    const response=await fetch("/api/updates/statistics/deep",{cache:"no-store",signal:AbortSignal.timeout(90000)});
-    if(!response.ok)throw Error("HTTP "+response.status);
-    const data=await response.json() as {sections?:{title:string;metrics:{label:string;value:string|null;detail:string}[]}[];caveats?:string[]};
-    deepGroups.replaceChildren();
-    for(const section of data.sections??[]){
-      const heading=document.createElement("h4");heading.textContent=section.title;deepGroups.append(heading);
-      const grid=document.createElement("div");grid.className="akariya-git-stat-grid";
-      for(const record of section.metrics??[]){
-        const tile=document.createElement("article");tile.className="akariya-git-stat";
-        const name=document.createElement("strong");name.textContent=record.label;
-        const value=document.createElement("p");value.className="akariya-git-stat-value";value.textContent=record.value??"Нет данных";
-        const description=document.createElement("small");description.textContent=record.detail;
-        tile.append(name,value,description);grid.append(tile);
-      }
-      deepGroups.append(grid);
-    }
-    deepStatus.textContent=(data.caveats??[]).join(" ");
-   }catch(error){deepStatus.textContent="Не удалось рассчитать показатели: "+(error instanceof Error?error.message:String(error));}
-   finally{deepPending=false;deepRefresh.disabled=false;}
-  }
-  deepRefresh.addEventListener("click",()=>{void loadDeep();});
-  void loadDeep();
+  // Analytics is its own module so the update flow above stays small and independent.
+  const insightsHost = document.createElement("div");
+  insightsHost.className = "insights-host";
+  parent.append(insightsHost);
+  void import("./project-insights.js").then(m => m.mountProjectInsights(insightsHost))
+    .catch(() => { insightsHost.textContent = "Не удалось загрузить аналитику проекта."; });
   const snoozeKey = "akariya-update-snooze";
   function snoozed(sha: string): boolean {
     try {
@@ -241,8 +172,18 @@ export function mountGithubUpdates(parent: HTMLElement): void {
         if (typeof record.at !== "string" || typeof record.event !== "string") continue;
         const item = document.createElement("li");
         const label = historyLabels[record.event] ?? "Событие";
-        item.textContent = label + " · " + new Date(record.at).toLocaleString("ru-RU") +
-          (record.revision && /^[0-9a-f]{40}$/.test(record.revision) ? " · " + record.revision.slice(0, 12) : "");
+        item.dataset.event = record.event in historyLabels ? record.event : "other";
+        const name = document.createElement("strong");
+        name.textContent = label;
+        const time = document.createElement("time");
+        time.dateTime = record.at;
+        time.textContent = new Date(record.at).toLocaleString("ru-RU");
+        item.append(name, time);
+        if (record.revision && /^[0-9a-f]{40}$/.test(record.revision)) {
+          const code = document.createElement("code");
+          code.textContent = record.revision.slice(0, 12);
+          item.append(code);
+        }
         historyList.append(item);
       }
       if (historyList.childElementCount === 0) {
@@ -297,7 +238,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
           installing = false;
           button.disabled = false;
           install.disabled = false;
-          install.textContent = "Установить обновление";
+          setInstallLabel("Установить обновление");
           await loadHistory();
           return;
         }
@@ -323,7 +264,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
     installing = false;
     button.disabled = false;
     install.disabled = false;
-    install.textContent = "Установить обновление";
+    setInstallLabel("Установить обновление");
   };
   install.addEventListener("click", () => {
     if (!approvedSha || installing) return;
@@ -332,10 +273,11 @@ export function mountGithubUpdates(parent: HTMLElement): void {
     installing = true;
     button.disabled = true;
     install.disabled = true;
-    install.textContent = "Обновление выполняется…";
+    setInstallLabel("Обновление выполняется…");
     progressBar.hidden = true;
     report.textContent = "";
     message.textContent = "Запускаю обновление. Не закрывайте AKARIYA.bat.";
+    setState("busy");
     track(sha,startedAt,"install");
     notify("update:state:"+sha,"info","Установка обновления","Начата установка версии "+sha.slice(0,12)+".");
     void (async () => {
@@ -349,7 +291,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
           // GitHub main changed (or the install became unnecessary) after the last check:
           // refresh so the user reviews and approves the revision that is current now.
           installing = false;
-          install.textContent = "Установить обновление";
+          setInstallLabel("Установить обновление");
           button.disabled = false;
           install.disabled = false;
           untrack();
@@ -376,7 +318,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
           installing = false;
           button.disabled = false;
           install.disabled = false;
-          install.textContent = "Установить обновление";
+          setInstallLabel("Установить обновление");
           return;
         }
       }
@@ -388,6 +330,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   const check = async (): Promise<void> => {
     if (inProgress || installing) return;
     inProgress = true; button.disabled = true; install.hidden = true; message.textContent = "Проверка GitHub…";
+    setState("checking");
     try {
       const response = await fetch("/api/updates/github", { cache: "no-store" });
       if (!response.ok) throw new Error("GitHub недоступен (HTTP " + response.status + ")");
@@ -395,6 +338,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
       if (!/^[a-f0-9]{40}$/i.test(state.latest)) throw new Error("Некорректная версия GitHub");
       approvedSha = state.latest;
       install.disabled = false;
+      setState(state.updateAvailable === true ? "available" : state.updateAvailable === false ? "current" : "unknown");
       message.textContent = state.updateAvailable === true
         ? "Доступна новая версия Akariya."
         : state.updateAvailable === false
@@ -430,12 +374,13 @@ export function mountGithubUpdates(parent: HTMLElement): void {
       } else space.textContent = "Объём свободного места проверить не удалось.";
       // An unknown local version can still install the reviewed latest revision.
       install.hidden = state.updateAvailable === false;
-      install.textContent = state.updateAvailable === null ? "Установить последнюю версию" : "Установить обновление";
+      setInstallLabel(state.updateAvailable === null ? "Установить последнюю версию" : "Установить обновление");
       install.disabled = state.enoughSpace === false;
       later.hidden = state.updateAvailable !== true || snoozed(state.latest);
       if (state.updateAvailable === true && snoozed(state.latest))
         message.textContent = "Есть обновление. Напоминание отложено; установить можно сейчас.";
     } catch (error) {
+      setState("error");
       message.textContent = "Не удалось проверить обновления: " +
         (error instanceof Error ? error.message : String(error));
       link.hidden = true; install.hidden = true;
@@ -447,5 +392,4 @@ export function mountGithubUpdates(parent: HTMLElement): void {
     if (document.visibilityState === "visible") void check();
   }, intervalMs);
   void check();
-  void loadStatistics();
 }

@@ -9,8 +9,17 @@ async function git(root:string,args:string[]):Promise<string>{
  const result=await run("git",["-C",root,...args],{encoding:"utf8",timeout:20000,maxBuffer:16*1024*1024,windowsHide:true});
  return result.stdout;
 }
-type Item={label:string;value:string|null;detail:string};
-export interface DeepMetrics { measuredAt:string;sections:{title:string;metrics:Item[]}[];caveats:string[] }
+/** `icon` names a glyph from the web icon set; the UI falls back to a neutral glyph for unknown names. */
+type Item={label:string;value:string|null;detail:string;icon:string};
+export interface DeepMetrics {
+ measuredAt:string;
+ sections:{id:"history"|"code"|"updater";title:string;metrics:Item[]}[];
+ /** Line composition of scanned source files, for the code breakdown chart. */
+ composition:{files:number;lines:number;code:number;comments:number;blank:number};
+ /** confirmed/prepared as a percentage, or null without a local journal. */
+ successRate:number|null;
+ caveats:string[];
+}
 const n=(value:number)=>value.toLocaleString("ru-RU");
 let cached:{root:string;time:number;task:Promise<DeepMetrics>}|undefined;
 export function deepUpdateMetrics(root:string):Promise<DeepMetrics>{
@@ -179,52 +188,53 @@ async function calculate(root:string):Promise<DeepMetrics>{
   }
  }catch{/* observation not yet available */}
  const unavailable="Не измеряется текущей версией updater";
- const metric=(label:string,value:string|null,detail:string):Item=>({label,value,detail});
- return {measuredAt:new Date().toISOString(),caveats:[
+ const metric=(icon:string,label:string,value:string|null,detail:string):Item=>({icon,label,value,detail});
+ const percent=(part:number)=>allLines?Math.round(part/allLines*1000)/10:0;
+ return {measuredAt:new Date().toISOString(),successRate:successful,
+  composition:{files:files.length,lines:allLines,code:Math.max(0,allLines-comments-blank),comments,blank},
+  caveats:[
   "Синтаксические метрики основаны на поиске конструкций в исходных файлах, без AST; значения приблизительные.",
   "Git-история отражает доступные локальные ветки и коммиты, а не удалённые ветки GitHub.",
   "Без событий с таймстампами и счётчиками байтов некоторые метрики updater невозможно восстановить задним числом."
  ],sections:[
-  {title:"📜 История и рекорды",metrics:[
-   metric("👑 Король изменений",king,"Модуль с максимальным числом Git-изменений"),
-   metric("🦖 Древнейший код",ancient===null?null:n(ancient),"Пока нет blame-анализа начальных строк"),
-   metric("👻 Призраки прошлого",removedFunctions,"Требуется сопоставление AST между ревизиями"),
-   metric("🧬 Эволюционный скачок",bigDay,"Максимальный чистый прирост строк за день"),
-   metric("🧊 Замороженные файлы",cold===null?null:n(cold),"Не изменялись более 90 дней, до 200 файлов"),
-   metric("🧨 Большой взрыв",bigBang,"Коммит с максимальным числом изменённых файлов"),
-   metric("🌌 Вселенная зависимостей",n(imports)+" импортов / "+n(edges.size)+" связей","Статический поиск import/export"),
-   metric("💎 Редкие достижения",magic,"Редкие совпадения в коротких хешах"),
-   metric("🌳 Дерево поколений",hasHistory?n(branches??0)+" Git-ссылок":null,"PR и релизы недоступны без GitHub API"),
-   metric("📖 Книга жизни",bigBang&&bigDay?"Крупнейший коммит: "+bigBang+"; день роста: "+bigDay:null,"Краткая автоматическая хроника"),
-   metric("😀 Эмодзи в коде",n(emoji),"Unicode pictographic символы"),
-   metric("📐 Самая длинная строка",n(longestLine)+" символов","Unicode кодовые точки"),
-   metric("🐍 Самое длинное имя",longestIdentifier||null,"Поиск объявлений"),
-   metric("🔤 Любимое слово",favorite,"В сообщениях Git-коммитов"),
-   metric("🔮 Магия хешей",magic,"Повторяющиеся начальные символы")
+  {id:"history",title:"История и рекорды",metrics:[
+   metric("crown","Король изменений",king,"Модуль с максимальным числом Git-изменений"),
+   metric("bang","Большой взрыв",bigBang,"Коммит с максимальным числом изменённых файлов"),
+   metric("dna","Эволюционный скачок",bigDay,"Максимальный чистый прирост строк за день"),
+   metric("snowflake","Замороженные файлы",cold===null?null:n(cold),"Не изменялись более 90 дней, до 200 файлов"),
+   metric("orbit","Вселенная зависимостей",n(imports)+" импортов / "+n(edges.size)+" связей","Статический поиск import/export"),
+   metric("branch","Дерево поколений",hasHistory?n(branches??0)+" Git-ссылок":null,"PR и релизы недоступны без GitHub API"),
+   metric("quote","Любимое слово",favorite,"В сообщениях Git-коммитов"),
+   metric("gem","Магия хешей",magic,"Короткие хеши с четырьмя одинаковыми начальными символами"),
+   metric("smile","Эмодзи в коде",n(emoji),"Unicode pictographic символы"),
+   metric("ruler","Самая длинная строка",n(longestLine)+" символов","Unicode кодовые точки"),
+   metric("tag","Самое длинное имя",longestIdentifier||null,"Поиск объявлений"),
+   metric("fossil","Древнейший код",ancient===null?null:n(ancient),"Пока нет blame-анализа начальных строк"),
+   metric("ghost","Призраки прошлого",removedFunctions,"Требуется сопоставление AST между ревизиями")
   ]},
-  {title:"🔬 Код под микроскопом",metrics:[
-   metric("🧮 Функции",n(functions),"function и стрелочные функции, приблизительно"),
-   metric("🏛️ Классы",n(classes),"Объявления class"),
-   metric("📐 Типы",n(types),"Объявления interface и type"),
-   metric("📤 Экспорты",n(exports),"Экспортируемые объявления"),
-   metric("💬 Комментарии",n(comments)+" строк ("+(allLines?Math.round(comments/allLines*1000)/10:0)+"%)","Строки с признаками комментариев"),
-   metric("🌫️ Воздух",n(blank)+" строк","Пустые строки"),
-   metric("🖌️ Стили",n(cssRules)+" правил","CSS-блоки"),
-   metric("🌈 Палитра",n(colors.size)+" цветов","Уникальные CSS hex/rgb/hsl значения"),
-   metric("🧵 Регулярные выражения",n(regexes),"Эвристический поиск regex-литералов"),
-   metric("📦 Зависимости",n(npmDependencies),"dependencies + devDependencies корневого package.json")
+  {id:"code",title:"Код под микроскопом",metrics:[
+   metric("function","Функции",n(functions),"function и стрелочные функции, приблизительно"),
+   metric("columns","Классы",n(classes),"Объявления class"),
+   metric("type","Типы",n(types),"Объявления interface и type"),
+   metric("upload","Экспорты",n(exports),"Экспортируемые объявления"),
+   metric("message","Комментарии",n(comments)+" строк ("+percent(comments)+"%)","Строки с признаками комментариев"),
+   metric("wind","Воздух",n(blank)+" строк ("+percent(blank)+"%)","Пустые строки"),
+   metric("brush","Стили",n(cssRules)+" правил","CSS-блоки"),
+   metric("palette","Палитра",n(colors.size)+" цветов","Уникальные CSS hex/rgb/hsl значения"),
+   metric("regex","Регулярные выражения",n(regexes),"Эвристический поиск regex-литералов"),
+   metric("package","Зависимости",n(npmDependencies),"dependencies + devDependencies корневого package.json")
   ]},
-  {title:"⚙️ Измерения updater",metrics:[
-   metric("📡 Скорость обнаружения обновления",discoveryLag,"От времени коммита GitHub до первого наблюдения; публикация могла быть позже"),
-   metric("⬇️ Скорость загрузки",downloadSpeed,downloadSpeed?"Последняя завершённая загрузка":"Нет измерений загрузки"),
-   metric("♻️ Повторное использование",null,"Текущий updater скачивает полный архив; доля совпадений не измеряется"),
-   metric("🔎 Скорость проверки хешей",hashRate,"Реальная скорость локального SHA-256 архива; не подтверждает подлинность по доверенному эталону"),
-   metric("🧪 Время подготовки",preparation,"От старта updater до prepared"),
-   metric("⏸️ Простой при установке",actualDowntime,"От остановки backend до подтверждённой доступности HTTP; подготовка до остановки исключена. Время от prepared: "+(restartToHealthy??"Нет данных")),
-   metric("✅ Успешность обновлений",successful===null?null:n(successful)+"%","Приблизительно: confirmed/prepared по локальному журналу"),
-   metric("🛟 Время восстановления после rollback",fullRecovery,"От начала файлового отката до доступного HTTP; файловая часть: "+(rollbackTime??"Нет данных")),
-   metric("📦 Эффективность дельты",null,"Загрузка полного архива; метрика дельты неприменима"),
-   metric("🗄️ Вес резервных копий",n(backupsBytes)+" байт","Объём "+n(backupsCount)+" файлов в локальных backups")
+  {id:"updater",title:"Измерения updater",metrics:[
+   metric("radar","Скорость обнаружения обновления",discoveryLag,"От времени коммита GitHub до первого наблюдения; публикация могла быть позже"),
+   metric("download","Скорость загрузки",downloadSpeed,downloadSpeed?"Последняя завершённая загрузка":"Нет измерений загрузки"),
+   metric("hash","Скорость проверки хешей",hashRate,"Реальная скорость локального SHA-256 архива; не подтверждает подлинность по доверенному эталону"),
+   metric("flask","Время подготовки",preparation,"От старта updater до prepared"),
+   metric("pause","Простой при установке",actualDowntime,"От остановки backend до подтверждённой доступности HTTP; подготовка до остановки исключена. Время от prepared: "+(restartToHealthy??"Нет данных")),
+   metric("check-circle","Успешность обновлений",successful===null?null:n(successful)+"%","Приблизительно: confirmed/prepared по локальному журналу"),
+   metric("lifebuoy","Время восстановления после rollback",fullRecovery,"От начала файлового отката до доступного HTTP; файловая часть: "+(rollbackTime??"Нет данных")),
+   metric("archive","Вес резервных копий",n(backupsBytes)+" байт","Объём "+n(backupsCount)+" файлов в локальных backups"),
+   metric("recycle","Повторное использование",null,"Текущий updater скачивает полный архив; доля совпадений не измеряется"),
+   metric("layers","Эффективность дельты",null,"Загрузка полного архива; метрика дельты неприменима")
   ]}
  ]};
 }
