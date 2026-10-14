@@ -314,8 +314,11 @@ export async function applyManualRollback(backupId, installRoot = root) {
     const selected = backups.find(item => item.id === backupId);
     if (!selected) throw Error("Rollback snapshot missing or invalid");
     const original = path.join(stateDir, "backups", backupId);
-    const files = (await readdir(original)).filter(n => allowed.includes(n));
-    if (!files.includes("scripts") || !files.includes("apps") || !files.includes("packages"))
+    const entries = await readdir(original);
+    const files = entries.filter(n => allowed.includes(n));
+    if (!files.includes("scripts") || !files.includes("apps") || !files.includes("packages") ||
+        !files.includes("package.json") || !files.includes("package-lock.json") ||
+        !files.includes("AKARIYA.bat"))
       throw Error("Rollback snapshot incomplete");
     for (const name of files) {
       await verifyDestination(installRoot, name);
@@ -349,7 +352,13 @@ export async function applyManualRollback(backupId, installRoot = root) {
     await tryHistory("prepared", selected.revision, installRoot);
     return selected.revision;
   } catch (error) {
-    if (pendingCreated) await recoverInterruptedUpdate(installRoot);
+    if (pendingCreated) {
+      try { await recoverInterruptedUpdate(installRoot); }
+      catch (recoveryError) {
+        throw new AggregateError([error, recoveryError],
+          "Manual rollback and recovery failed; journal retained for next startup");
+      }
+    }
     throw error;
   } finally {
     await lock();
@@ -429,12 +438,18 @@ export async function applyGithubUpdate(sha) {
   } catch (error) {
     console.error("[UPDATE ERROR]", error instanceof Error ? error.message : String(error));
     await tryHistory("failed", sha);
-    await writeProgress("failed");
+    try { await writeProgress("failed"); }
+    catch (progressError) { console.warn("Could not record update progress:", progressError); }
     if (swapped) {
-      await restore(backup, planned, existed);
-      await restoreMarkers(backup);
-      await rm(path.join(state, "pending.json"), { force: true });
-      console.error("Previous application files restored");
+      try {
+        await restore(backup, planned, existed);
+        await restoreMarkers(backup);
+        await rm(path.join(state, "pending.json"), { force: true });
+        console.error("Previous application files restored");
+      } catch (rollbackError) {
+        console.error("[CRITICAL] Automatic rollback failed. Recovery journal retained:", rollbackError);
+        throw rollbackError;
+      }
     }
     return false;
   } finally {
