@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { canonicalReleasePayload } from "../../../../scripts/release-trust.mjs";
 import { createVerifiedUpdateRoute, verifyPublisherManifest } from "./update-verify.js";
 
 const { publicKey, privateKey } = generateKeyPairSync("ed25519");
