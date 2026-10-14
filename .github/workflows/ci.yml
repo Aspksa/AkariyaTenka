@@ -28,7 +28,7 @@ jobs:
       - name: Install
         run: npm ci --no-audit --no-fund --ignore-scripts
       - name: Launcher syntax
-        run: node --check scripts/launch.mjs && node --check scripts/apply-update.mjs && node --check scripts/build-server.mjs && node --check scripts/workspace-health.mjs
+        run: node --check scripts/launch.mjs && node --check scripts/build-server.mjs && node --check scripts/workspace-health.mjs
       - name: PowerShell bootstrap syntax
         if: runner.os == 'Windows'
         shell: pwsh

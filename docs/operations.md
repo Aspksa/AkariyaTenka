@@ -47,23 +47,13 @@ Automated dependency PRs are intentionally limited to minor and patch updates. M
 
 Runtime dependency security is checked separately from general version freshness.
 
-## Release pipeline
+## Build and local distribution
 
-A release candidate is built from a clean Git tree with Node 22.
+Continuous integration tests the source checkout on Windows and Ubuntu with Node.js 20 and 22.
+Local builds use `npm run build`. The Windows launcher can bootstrap an integrity-checked
+portable Node.js runtime without administrator privileges. Generated build outputs are
+never a reason to discard local user data.
 
-The pipeline:
-
-1. installs dependencies with lifecycle scripts disabled;
-2. runs the full quality gate;
-3. creates a clean `AkariyaTenka.zip`;
-4. writes the source commit SHA to `.akariya-version`;
-5. generates a CycloneDX SBOM;
-6. generates a SHA-256 checksum;
-7. downloads the candidate on Windows;
-8. verifies checksum and SBOM syntax;
-9. extracts into a path containing spaces;
-10. launches `AKARIYA.bat` without system Node and verifies the pinned portable runtime.
-
-For `v*` tags only, the verified ZIP is published as a GitHub Release together with its checksum and SBOM. GitHub artifact attestations are generated for build provenance and the SBOM.
-
-The release ZIP contains application source, not `node_modules`, `.runtime`, user data or secrets. First launch remains responsible for portable runtime/bootstrap and dependency recovery.
+The project deliberately has no application update, rollback, device-transfer or
+publisher-signing workflow. New versions are distributed only through an explicit
+developer-controlled source/build delivery process; there is no automatic installation.

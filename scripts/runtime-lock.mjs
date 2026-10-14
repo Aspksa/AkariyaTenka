@@ -2,7 +2,7 @@ import { mkdir, rm, readFile, writeFile, lstat, rename } from "node:fs/promises"
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
-const state = root => path.join(root, ".portable-state");
+const state = root => path.join(root, ".runtime");
 const check = async p => { try { await lstat(p); return true; } catch(e) { if(e.code==="ENOENT") return false; throw e; } };
 function processAlive(pid) {
   try { process.kill(pid, 0); return true; }
@@ -31,12 +31,11 @@ async function recoverDeadOwner(lock) {
   // winner continues, and a new lock must still be acquired exclusively.
   return archived;
 }
-export async function acquirePortableRuntime(root) {
+export async function acquireRuntimeLock(root) {
   const dir = state(root);
   await mkdir(dir, { recursive: true });
   const dirInfo = await lstat(dir);
-  if (!dirInfo.isDirectory() || dirInfo.isSymbolicLink()) throw Error("Unsafe portable state directory");
-  if (await check(path.join(dir,"sync.lock"))) throw Error("Portable synchronization active");
+  if (!dirInfo.isDirectory() || dirInfo.isSymbolicLink()) throw Error("Unsafe runtime state directory");
   const lock = path.join(dir,"runtime.lock"), nonce = randomUUID();
   let acquired = false;
   for (let attempt = 0; attempt < 2 && !acquired; attempt++) {
@@ -56,7 +55,6 @@ export async function acquirePortableRuntime(root) {
     await writeFile(path.join(lock,"owner.json"), JSON.stringify({
       schemaVersion: 1, nonce, pid: process.pid, startedAt: new Date().toISOString()
     })+"\n",{flag:"wx",mode:0o600});
-    if(await check(path.join(dir,"sync.lock"))) throw Error("Synchronization started while launching");
     return async () => {
       try {
         const record=JSON.parse(await readFile(path.join(lock,"owner.json"),"utf8"));

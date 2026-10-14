@@ -32,9 +32,7 @@ export function createHomeView():HomeView {
  const panels=el("section","tool-panels");
  panels.setAttribute("aria-label","Панель управления");
  const toolInfo=[
-  {name:"Диагностика",symbol:"◇",loader:()=>import("../features/diagnostics.js").then(m=>m.mountDiagnostics),caption:"Состояние и измерения системы"},
-  {name:"Обновления",symbol:"↻",loader:()=>import("../features/updates.js").then(m=>m.mountUpdates),caption:"Проверка и управление версиями"},
-  {name:"Перенос Akariya",symbol:"⇄",loader:()=>import("../features/portable-transfer.js").then(m=>m.mountPortableActions),caption:"Защищённый перенос между устройствами"}
+  {name:"Диагностика",symbol:"◇",loader:()=>import("../features/diagnostics.js").then(m=>m.mountDiagnostics),caption:"Состояние и измерения системы"}
  ];
  const workspace=el("section","content");
  for(const info of toolInfo){
@@ -95,9 +93,7 @@ export function createHomeView():HomeView {
  actionHeader.append(el("h2",undefined,"Центр управления"),el("span",undefined,"БЫСТРЫЙ ДОСТУП"));
  const cards=el("div","action-grid");
  const actions=[
-  {index:"01",name:"Диагностика",detail:"Мониторинг системы, показатели производительности и состояние модулей."},
-  {index:"02",name:"Обновления",detail:"Версии, целостность пакетов и безопасная проверка обновлений."},
-  {index:"03",name:"Перенос Akariya",detail:"Контролируемый перенос между компьютером и внешним накопителем."}
+  {index:"01",name:"Диагностика",detail:"Мониторинг системы, показатели производительности и состояние модулей."}
  ];
  actions.forEach((data,index)=>{
   const card=el("button","action-card");

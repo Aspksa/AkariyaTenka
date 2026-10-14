@@ -10,12 +10,6 @@ import { createModules } from "./bootstrap/modules.js";
 import { createHttpApplication } from "./bootstrap/server.js";
 import { createHealthRoute } from "./routes/health.js";
 import { createPerformanceRoute } from "./routes/performance.js";
-import { createUpdateStatusRoute } from "./routes/update-status.js";
-import { createUpdateCheckRoute } from "./routes/update-check.js";
-import { createVerifiedUpdateRoute } from "./routes/update-verify.js";
-import { loadPublisherTrust } from "./routes/publisher-trust.js";
-import { createPortableStatusRoute } from "./routes/portable-status.js";
-import { createPortableActionRoute } from "./routes/portable-action.js";
 import { HealthService } from "./services/health-service.js";
 import { ShutdownController } from "./services/shutdown-controller.js";
 
@@ -26,7 +20,6 @@ async function main(): Promise<void> {
   const requestContext = new AsyncLocalRequestContextScope();
   const logger = new Logger("akariya", config.logLevel, undefined, createSecretRedactor(process.env), clock, requestContext);
   const storage = await createStorage(config);
-  const publisherTrust = await loadPublisherTrust(process.cwd());
   const security = createSecurity(storage.audit, clock, process.env);
   createAssistant(security.policy, security.approvals, storage.audit, clock, storage.assistant);
   const modules = createModules(clock, requestContext);
@@ -48,18 +41,11 @@ async function main(): Promise<void> {
   });
 
   let requestSupervisorShutdown: (() => void) | undefined;
-  let requestPortableShutdown: (() => void) | undefined;
   const server = createHttpApplication(
     config,
     {
       health: createHealthRoute(health),
       performance: createPerformanceRoute(modules.metrics),
-      updateStatus: createUpdateStatusRoute(process.cwd()),
-      updateCheck: createUpdateCheckRoute(process.cwd()),
-      updateVerify: createVerifiedUpdateRoute(publisherTrust),
-      portableStatus: () => createPortableStatusRoute(process.cwd()),
-      portableAction: createPortableActionRoute(process.cwd(), config.supervisorToken),
-      portableShutdown: async () => { requestPortableShutdown?.(); },
       supervisorShutdown: async () => { requestSupervisorShutdown?.(); }
     },
     logger,
@@ -86,11 +72,6 @@ async function main(): Promise<void> {
   );
 
   requestSupervisorShutdown = () => { void shutdown.shutdown(0, "supervisor"); };
-  requestPortableShutdown = () => {
-    void shutdown.shutdown(76, "portable-transfer").then(result => {
-      if (result.failures.length > 0) process.exitCode = 1;
-    });
-  };
 
   const crash = (kind: string, reason: unknown): void => {
     const error = toError(reason);
