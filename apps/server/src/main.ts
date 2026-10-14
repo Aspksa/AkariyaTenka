@@ -84,7 +84,7 @@ async function main(): Promise<void> {
         if (!response.ok) throw new AppError({code:"EXTERNAL_SERVICE",message:"Cloud.ru models request failed (HTTP "+response.status+")"});
         const body=await response.json() as {data?:Array<{id?:unknown;metadata?:{name?:unknown;type?:unknown}}>};
         const models=(Array.isArray(body.data)?body.data:[])
-          .filter(m=>typeof m.id==="string" && /^[\\w./-]{2,150}$/.test(m.id))
+          .filter(m=>typeof m.id==="string" && /^[\w./-]{2,150}$/.test(m.id))
           .map(m=>({id:m.id,name:typeof m.metadata?.name==="string"?m.metadata.name:m.id,
             type:typeof m.metadata?.type==="string"?m.metadata.type:null})).slice(0,150);
         return JSON.stringify({models});
