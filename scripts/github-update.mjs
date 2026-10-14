@@ -49,15 +49,15 @@ async function extractWindows(zip, destination) {
   const ps = path.join(root, "scripts", "github-extract.ps1");
   await run("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps, "-Archive", zip, "-Destination", destination], root);
 }
-async function probe() {
+async function probe(candidateRoot) {
   const server = net.createServer();
   const port = await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => resolve(server.address().port));
   });
   await new Promise(resolve => server.close(resolve));
-  const child = spawn(process.execPath, [path.join(root, "apps/server/dist/server.mjs")], {
-    cwd: root, stdio: "ignore", windowsHide: true,
+  const child = spawn(process.execPath, [path.join(candidateRoot, "apps/server/dist/server.mjs")], {
+    cwd: candidateRoot, stdio: "ignore", windowsHide: true,
     env: { ...process.env, PORT: String(port), AKARIYA_PORT: String(port), AKARIYA_HOST: "127.0.0.1" }
   });
   try {
@@ -65,7 +65,10 @@ async function probe() {
       if (child.exitCode !== null) throw Error("Updated backend exited before health check");
       try {
         const r = await fetch("http://127.0.0.1:" + port + "/api/health", { signal: AbortSignal.timeout(600) });
-        if (r.ok) return;
+        if (r.ok) {
+          const web = await fetch("http://127.0.0.1:" + port + "/", { signal: AbortSignal.timeout(1500) });
+          if (web.ok) return;
+        }
       } catch { /* booting */ }
       await new Promise(resolve => setTimeout(resolve, 300));
     }
@@ -92,6 +95,18 @@ async function restoreMarkers(backup) {
     await rm(path.join(root, marker), { force: true });
     if (await exists(old)) await copyFile(old, path.join(root, marker));
   }
+}
+export async function pendingGithubUpdate() {
+  const pending = path.join(state, "pending.json");
+  if (!await exists(pending)) return null;
+  const record = JSON.parse(await readFile(pending, "utf8"));
+  if (!record || typeof record.sha !== "string" || !SHA.test(record.sha)) return null;
+  return record.sha;
+}
+export async function confirmGithubUpdate(sha) {
+  if (!SHA.test(sha) || await pendingGithubUpdate() !== sha)
+    throw Error("Pending update confirmation SHA mismatch");
+  await rm(path.join(state, "pending.json"));
 }
 export async function recoverInterruptedUpdate() {
   const pending = path.join(state, "pending.json");
@@ -133,6 +148,8 @@ export async function applyGithubUpdate(sha) {
     await run(process.platform === "win32" ? "cmd.exe" : "npm",
       process.platform === "win32" ? ["/d", "/s", "/c", "npm ci --no-audit --no-fund --ignore-scripts && npm run check"] : ["ci"],
       staged);
+    console.log("Probing staged backend and web without modifying installation");
+    await probe(staged);
     backup = path.join(state, "backups", randomUUID());
     await mkdir(backup, { recursive: true });
     const pending = path.join(state, "pending.json");
@@ -147,7 +164,7 @@ export async function applyGithubUpdate(sha) {
         existed[name] = await exists(path.join(root, name));
       }
     }
-    await writeFile(pending, JSON.stringify({ backup, names: planned, existed }) + "\n", { flag: "wx", mode: 0o600 });
+    await writeFile(pending, JSON.stringify({ sha, backup, names: planned, existed }) + "\n", { flag: "wx", mode: 0o600 });
     swapped = true;
     for (const name of planned) {
       if (existed[name]) await rename(path.join(root, name), path.join(backup, name));
@@ -155,10 +172,7 @@ export async function applyGithubUpdate(sha) {
     }
     await writeFile(path.join(root, ".akariya-version"), sha + "\n");
     await rm(path.join(root, ".akariya-build.json"), { force: true });
-    console.log("Running installed server health probe");
-    await probe();
-    await rm(pending, { force: true });
-    console.log("Update installed and health-confirmed");
+    console.log("Update installed; awaiting confirmation from restarted launcher");
     return true;
   } catch (error) {
     console.error("[UPDATE ERROR]", error instanceof Error ? error.message : String(error));
