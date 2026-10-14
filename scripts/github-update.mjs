@@ -80,44 +80,45 @@ async function probe(candidateRoot) {
     }
   }
 }
-async function restore(backup, names, existed) {
+async function restore(backup, names, existed, installRoot = root) {
   for (const name of [...names].reverse()) {
-    const destination = path.join(root, name);
+    const destination = path.join(installRoot, name);
     if (await exists(path.join(backup, name))) {
       await rm(destination, { recursive: true, force: true });
       await rename(path.join(backup, name), destination);
     } else if (existed[name] === false) await rm(destination, { recursive: true, force: true });
   }
 }
-async function restoreMarkers(backup) {
+async function restoreMarkers(backup, installRoot = root) {
   for (const marker of [".akariya-version", ".akariya-build.json"]) {
     const old = path.join(backup, marker);
-    await rm(path.join(root, marker), { force: true });
-    if (await exists(old)) await copyFile(old, path.join(root, marker));
+    await rm(path.join(installRoot, marker), { force: true });
+    if (await exists(old)) await copyFile(old, path.join(installRoot, marker));
   }
 }
-export async function pendingGithubUpdate() {
-  const pending = path.join(state, "pending.json");
+export async function pendingGithubUpdate(installRoot = root) {
+  const pending = path.join(installRoot, ".runtime", "github-updater", "pending.json");
   if (!await exists(pending)) return null;
   const record = JSON.parse(await readFile(pending, "utf8"));
   if (!record || typeof record.sha !== "string" || !SHA.test(record.sha)) return null;
   return record.sha;
 }
-export async function confirmGithubUpdate(sha) {
-  if (!SHA.test(sha) || await pendingGithubUpdate() !== sha)
+export async function confirmGithubUpdate(sha, installRoot = root) {
+  if (!SHA.test(sha) || await pendingGithubUpdate(installRoot) !== sha)
     throw Error("Pending update confirmation SHA mismatch");
-  await rm(path.join(state, "pending.json"));
+  await rm(path.join(installRoot, ".runtime", "github-updater", "pending.json"));
 }
-export async function recoverInterruptedUpdate() {
-  const pending = path.join(state, "pending.json");
+export async function recoverInterruptedUpdate(installRoot = root) {
+  const recoverState = path.join(installRoot, ".runtime", "github-updater");
+  const pending = path.join(recoverState, "pending.json");
   if (!await exists(pending)) return false;
   const record = JSON.parse(await readFile(pending, "utf8"));
   if (!record || !Array.isArray(record.names) || !record.names.every(n => allowed.includes(n)) || !record.existed || typeof record.existed !== "object" ||
-      typeof record.backup !== "string" || !record.backup.startsWith(path.join(state, "backups") + path.sep)) {
+      typeof record.backup !== "string" || !record.backup.startsWith(path.join(recoverState, "backups") + path.sep)) {
     throw Error("Update recovery metadata invalid; manual inspection required");
   }
-  await restore(record.backup, record.names, record.existed);
-  await restoreMarkers(record.backup);
+  await restore(record.backup, record.names, record.existed, installRoot);
+  await restoreMarkers(record.backup, installRoot);
   await rm(pending, { force: true });
   return true;
 }
@@ -141,7 +142,9 @@ export async function applyGithubUpdate(sha) {
     if (folders.length !== 1) throw Error("Unexpected GitHub archive layout");
     const staged = path.join(extracted, folders[0].name);
     await visit(staged);
-    for (const name of ["AKARIYA.bat", "package.json", "package-lock.json", "scripts", "apps", "packages"]) {
+    for (const name of ["AKARIYA.bat", "package.json", "package-lock.json", "scripts", "apps", "packages",
+      "scripts/launch.mjs", "scripts/github-update.mjs", "scripts/runtime-lock.mjs",
+      "apps/server/dist/server.mjs", "apps/web/dist/index.html"]) {
       if (!await exists(path.join(staged, name))) throw Error("Update is missing " + name);
     }
     console.log("Validating update in isolated folder");
