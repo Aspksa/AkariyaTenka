@@ -1,0 +1,23 @@
+name: Temporary cleanup merged Cloud.ru settings branch
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/temporary-clean-cloudru-settings.yml']
+permissions:
+  contents: write
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete merged feature branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          test "$(gh api "repos/$repo/pulls/74" --jq '.merged')" = "true"
+          branch="feat/cloudru-local-settings"
+          if gh api "repos/$repo/branches/$branch" >/dev/null 2>&1; then
+            gh api -X DELETE "repos/$repo/git/refs/heads/$branch"
+          fi
+          ! gh api "repos/$repo/branches/$branch" >/dev/null 2>&1
