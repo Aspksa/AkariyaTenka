@@ -13,6 +13,8 @@ export interface HttpRouteSet {
   readonly updateCheck?: () => Promise<string>;
   readonly updateVerify?: () => Promise<string>;
   readonly portableStatus?: () => Promise<string>;
+  readonly portableAction?: (payload: unknown) => Promise<string>;
+  readonly portableShutdown?: () => Promise<void>;
   readonly supervisorShutdown?: () => Promise<void>;
 }
 
@@ -83,6 +85,36 @@ export function createHttpApplication(
           response.writeHead(202, { "cache-control": "no-store", "content-length": "0" });
           response.end();
           setImmediate(() => { void routes.supervisorShutdown?.(); });
+          return;
+        }
+
+        if (request.method === "POST" && url.pathname === "/api/portable/action") {
+          const origin = request.headers.origin;
+          const peer = request.socket.remoteAddress;
+          const loopback = peer === "127.0.0.1" || peer === "::1" || peer === "::ffff:127.0.0.1";
+          const hostname = request.headers.host;
+          const expected = "127.0.0.1:" + config.port;
+          if (!loopback || config.host !== "127.0.0.1" || !config.supervised || !config.supervisorToken || hostname !== expected ||
+              origin !== "http://" + expected || request.headers["x-akariya-action"] !== "portable" ||
+              request.headers["content-type"]?.split(";")[0]?.trim() !== "application/json" ||
+              routes.portableAction === undefined || routes.portableShutdown === undefined) {
+            throw new AppError({ code: "PERMISSION", message: "Local supervised action required", correlationId: id });
+          }
+          let size = 0;
+          const chunks: Buffer[] = [];
+          for await (const chunk of request) {
+            const bytes: Buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            size += bytes.length;
+            if (size > 4096) throw new AppError({code:"VALIDATION",message:"Request too large",correlationId:id});
+            chunks.push(bytes);
+          }
+          let input: unknown;
+          try {input=JSON.parse(Buffer.concat(chunks).toString("utf8"));}
+          catch {throw new AppError({code:"VALIDATION",message:"Invalid JSON",correlationId:id});}
+          const result = await routes.portableAction(input);
+          response.writeHead(202, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+          response.end(result);
+          setImmediate(() => { void routes.portableShutdown?.(); });
           return;
         }
 
