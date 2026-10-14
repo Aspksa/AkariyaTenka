@@ -49,7 +49,7 @@ export async function performQueuedPortableAction(root, sessionToken) {
     if (stored.schemaVersion!==1 ||
       stored.session!==createHash("sha256").update(sessionToken).digest("hex"))
       throw Error("Transfer request does not belong to current supervised launch");
-    const action=validatePortableAction(root,{...stored,confirm:"ПЕРЕНЕСТИ"});
+    const action=validatePortableAction(root,{action:stored.action,other:stored.other,backupId:stored.backupId,confirm:"ПЕРЕНЕСТИ"});
     let detail;
     if (action.action==="compare") detail=await comparePortableAncestry(root,action.other);
     else if (action.action==="copy") {
