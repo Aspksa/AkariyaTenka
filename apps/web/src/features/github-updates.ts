@@ -68,8 +68,26 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   progressBar.max = 100; progressBar.hidden = true;
   progressBar.setAttribute("aria-label", "Загрузка обновления");
   const report = document.createElement("p");
-  parent.append(button, message, details, link, whatsNew, space,
-    install, later, progressBar, report, rollbackTitle, rollbackList, historyTitle, historyList);
+  // Layout: a status card with the main actions, then "what's new", then backups and history.
+  const block = (className: string, ...children: HTMLElement[]): HTMLElement => {
+    const node = document.createElement("section");
+    node.className = className;
+    node.append(...children);
+    return node;
+  };
+  message.className = "update-message";
+  details.className = "update-versions";
+  space.className = "update-space";
+  report.className = "update-report";
+  button.classList.add("ghost");
+  const actions = block("update-actions", install, later, button);
+  const summary = block("update-card update-summary", message, details, actions, progressBar, report, space);
+  whatsNew.className = "update-card";
+  whatsNew.append(link);
+  const backups = block("update-card", rollbackTitle, rollbackList);
+  const history = block("update-card", historyTitle, historyList);
+  parent.classList.add("updates-page");
+  parent.append(summary, whatsNew, block("update-grid", backups, history));
   const snoozeKey = "akariya-update-snooze";
   function snoozed(sha: string): boolean {
     try {
@@ -240,13 +258,13 @@ export function mountGithubUpdates(parent: HTMLElement): void {
       const state = await response.json() as UpdateStatus;
       if (!/^[a-f0-9]{40}$/i.test(state.latest)) throw new Error("Некорректная версия GitHub");
       approvedSha = state.latest;
-      install.hidden = state.updateAvailable !== true;
       install.disabled = false;
       message.textContent = state.updateAvailable === true
-        ? "Доступны изменения проекта на GitHub."
+        ? "Доступна новая версия Akariya."
         : state.updateAvailable === false
         ? "Установлена актуальная версия."
-        : "Текущая версия не определена. Автоматическое обновление недоступно.";
+        : "Версия этой копии не определена. Установите последнюю версию с GitHub: " +
+          "текущие файлы сохранятся в резервной копии.";
       details.textContent = "Локальная: " + (state.current?.slice(0, 12) ?? "неизвестна") +
         " · GitHub: " + state.latest.slice(0, 12);
       // The URL is generated from a pinned official repository and vetted SHA values.
@@ -270,7 +288,9 @@ export function mountGithubUpdates(parent: HTMLElement): void {
         space.textContent = "Свободно на диске: " + Math.floor(state.freeBytes / 1048576) + " МиБ" +
           (state.enoughSpace === false ? " — недостаточно для безопасного обновления (нужно 768 МиБ)." : "");
       } else space.textContent = "Объём свободного места проверить не удалось.";
-      install.hidden = state.updateAvailable !== true;
+      // An unknown local version can still install the reviewed latest revision.
+      install.hidden = state.updateAvailable === false;
+      install.textContent = state.updateAvailable === null ? "Установить последнюю версию" : "Установить обновление";
       install.disabled = state.enoughSpace === false;
       later.hidden = state.updateAvailable !== true || snoozed(state.latest);
       if (state.updateAvailable === true && snoozed(state.latest))

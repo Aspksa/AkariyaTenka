@@ -79,73 +79,9 @@ button{cursor:pointer}
 .masthead{position:sticky;top:0;z-index:15;display:flex;align-items:center;gap:16px;min-height:72px;margin:0 calc(-1 * clamp(20px,4vw,48px));padding:0 clamp(20px,4vw,48px);background:rgb(10 9 13 / .72);backdrop-filter:blur(14px) saturate(1.4);-webkit-backdrop-filter:blur(14px) saturate(1.4);border-bottom:1px solid var(--line)}
 .mast-brand{display:none;width:34px;height:34px;flex:none}
 .mast-title{display:flex;flex-direction:column;gap:2px;min-width:0;margin-right:auto}
-.breadcrumb{color:var(--text-3);font-size:11.5px;font-weight:550}
-.page-title{margin:0;font-size:17px;font-weight:650;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.page-title{margin:0;font-size:19px;font-weight:650;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mast-right{display:flex;align-items:center;gap:10px}
-.system-label{padding:6px 10px;border:1px solid var(--line-strong);border-radius:999px;background:var(--surface);color:var(--text-2);font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums}
 
-/* Update banner */
-.update-notice{display:flex;align-items:center;gap:12px;width:100%;margin-top:28px;padding:13px 16px;border:1px solid var(--gold-line);border-radius:var(--r);background:linear-gradient(90deg,rgb(217 164 65 / .14),rgb(217 164 65 / .04));color:#f2dcb2;font-size:14px;font-weight:550;text-align:left;transition:border-color .15s,background .15s}
-.update-notice .ui-icon{color:var(--gold)}
-.update-notice strong{margin-left:auto;display:inline-flex;align-items:center;padding:6px 12px;border-radius:999px;background:var(--gold);color:#251a08;font-size:12.5px;font-weight:700;white-space:nowrap}
-.update-notice:hover{border-color:var(--gold)}
-
-/* Hero: greeting + core status side by side */
-.hero{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,1fr);gap:16px;margin-top:28px}
-.update-notice:not([hidden])+.hero{margin-top:16px}
-.intro{position:relative;overflow:hidden;padding:36px 36px 34px;border:1px solid var(--line);border-radius:var(--r-lg);background:linear-gradient(140deg,#1b1219 0%,var(--surface) 55%);box-shadow:var(--shadow)}
-.intro::after{content:"";position:absolute;right:-60px;top:-80px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgb(229 72 77 / .22),transparent 68%);pointer-events:none}
-.section-kicker{margin:0 0 14px;color:var(--gold);font-size:12px;font-weight:650;letter-spacing:.08em;text-transform:uppercase}
-.intro h1{position:relative;margin:0;max-width:640px;font-size:clamp(28px,3.3vw,44px);line-height:1.12;font-weight:700;letter-spacing:-.035em;color:var(--text)}
-.intro-subtitle{position:relative;max-width:520px;margin:14px 0 0;color:var(--text-2);font-size:15px;line-height:1.65}
-.status-card{display:flex;flex-direction:column;justify-content:space-between;gap:22px;padding:24px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);box-shadow:var(--shadow)}
-.status-caption{display:flex;align-items:center;gap:14px}
-.status-icon{display:grid;place-items:center;width:46px;height:46px;flex:none;border-radius:var(--r);background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent-text)}
-.status-icon .ui-icon{width:22px;height:22px}
-.status-description{display:flex;flex-direction:column;gap:4px}
-.tiny-label{color:var(--text-3);font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
-.status-description strong{font-size:16px;font-weight:650}
-.status-card .badge{align-self:flex-start}
-.status-note{margin:0;color:var(--text-3);font-size:13px;line-height:1.55}
-.status-foot{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
-
-/* Status badge */
-.badge{display:inline-flex;align-items:center;gap:8px;padding:7px 12px 7px 10px;border:1px solid var(--line-strong);border-radius:999px;background:var(--surface-2);color:var(--text-2);font-size:12.5px;font-weight:650;white-space:nowrap}
-.badge::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 10px currentColor}
-.badge.healthy{background:var(--ok-soft);border-color:var(--ok-line);color:var(--ok)}
-.badge.degraded,.badge.pending{background:var(--warn-soft);border-color:var(--warn-line);color:var(--warn)}
-.badge.pending::before{animation:pulse 1.2s ease-in-out infinite}
-.badge.failed{background:var(--bad-soft);border-color:var(--bad-line);color:var(--bad)}
-@keyframes pulse{50%{opacity:.3}}
-
-/* ---------- Control centre ---------- */
-.section-title{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:40px 0 14px}
-.section-title h2{margin:0;font-size:18px;font-weight:680;letter-spacing:-.015em;white-space:nowrap}
-.dashboard-customize{display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border:1px solid var(--line-strong);border-radius:var(--r-sm);background:var(--surface);color:var(--text-2);font-size:13px;font-weight:600;white-space:nowrap;transition:background .15s,color .15s,border-color .15s}
-.dashboard-customize .ui-icon{width:16px;height:16px;order:-1}
-.dashboard-customize:hover,.dashboard-customize[aria-expanded="true"]{background:var(--surface-2);border-color:var(--accent-line);color:var(--text)}
-.dashboard-controls{display:flex}
-.dashboard-editor{width:100%;margin:0 0 14px;padding:6px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
-.dashboard-editor-row{display:flex;align-items:center;gap:6px;padding:8px 8px 8px 12px;border-radius:var(--r-sm)}
-.dashboard-editor-row+.dashboard-editor-row{border-top:1px solid var(--line)}
-.dashboard-editor-row>span{margin-right:auto;font-size:14px;font-weight:550}
-.dashboard-editor-button{display:grid;place-items:center;width:34px;height:34px;padding:0;border:1px solid var(--line-strong);border-radius:var(--r-sm);background:var(--surface-2);color:var(--text-2);transition:color .15s,border-color .15s}
-.dashboard-editor-button .ui-icon{width:17px;height:17px}
-.dashboard-editor-button:hover:not(:disabled){color:var(--text);border-color:var(--accent-line)}
-.dashboard-editor-button:disabled{opacity:.3;cursor:not-allowed}
-
-.action-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
-.action-card{position:relative;display:grid;align-content:start;grid-template-columns:auto 1fr auto;grid-template-areas:"icon index arrow" "name name name" "detail detail detail";align-items:center;column-gap:14px;row-gap:6px;padding:22px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--surface);color:var(--text);text-align:left;box-shadow:var(--shadow);transition:border-color .18s,background .18s,transform .18s var(--ease)}
-.action-card:hover{border-color:var(--line-strong);background:var(--surface-2);transform:translateY(-2px)}
-.card-icon{grid-area:icon;display:grid;place-items:center;width:44px;height:44px;margin-bottom:12px;border-radius:var(--r);background:var(--accent-soft);border:1px solid rgb(229 72 77 / .22);color:var(--accent-text)}
-.card-icon .ui-icon{width:22px;height:22px}
-.card-index{grid-area:index;align-self:start;margin-top:4px;color:var(--text-3);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
-.card-arrow{grid-area:arrow;align-self:start;display:grid;place-items:center;width:32px;height:32px;border-radius:50%;border:1px solid var(--line-strong);color:var(--text-3);transition:color .18s,border-color .18s,transform .18s var(--ease),background .18s}
-.card-arrow .ui-icon{width:16px;height:16px}
-.action-card:hover .card-arrow{color:#fff;border-color:var(--accent);background:var(--accent);transform:translateX(2px)}
-.card-name{grid-area:name;font-size:17px;font-weight:650;letter-spacing:-.01em}
-.card-detail{grid-area:detail;max-width:420px;color:var(--text-2);font-size:13.5px;line-height:1.6}
-.dashboard-empty{grid-column:1/-1;margin:0;padding:28px;border:1px dashed var(--line-strong);border-radius:var(--r-lg);color:var(--text-2);font-size:14px;text-align:center}
 
 /* ---------- Tool panels ---------- */
 .tool-panels{margin-top:28px}
@@ -190,6 +126,24 @@ button{cursor:pointer}
 .diagnostic-row{display:flex;flex-direction:column-reverse;gap:6px;padding:16px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2);color:var(--text-3);font-size:12.5px}
 .diagnostic-row strong{color:var(--text);font-size:22px;font-weight:680;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 
+/* Updates page: status card with actions, then what's new, backups and history. */
+.panel-body.updates-page{display:grid;gap:14px;align-items:start}
+.update-card{display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-width:0;padding:18px 20px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2)}
+.update-card>*{margin:0;max-width:100%}
+.panel-body .update-card h3{margin:0;padding:0;border:0;font-size:14px;color:var(--text-3);font-weight:650;letter-spacing:.06em;text-transform:uppercase}
+.panel-body .update-card ul{align-self:stretch}
+.panel-body .update-card li{background:var(--surface-3)}
+.update-summary{gap:12px;padding:22px;border-color:var(--gold-line);background:linear-gradient(140deg,rgb(217 164 65 / .1),var(--surface-2) 55%)}
+.update-message{color:var(--text);font-size:15.5px;font-weight:600;line-height:1.5}
+.update-versions{padding:4px 10px;border-radius:var(--r-sm);background:var(--surface-3);color:var(--text-2);font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;font-size:12.5px}
+.update-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px!important}
+.update-actions:not(:has(button:not([hidden]))){display:none}
+.update-space,.update-report{color:var(--text-3);font-size:13px}
+.panel-body .update-summary progress{align-self:stretch;width:100%}
+.panel-body .panel-button.ghost{background:transparent}
+.update-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.update-grid .update-card{height:100%}
+
 /* ---------- Notifications ---------- */
 .notification-center{position:relative}
 .notification-toggle{position:relative;display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid var(--line-strong);border-radius:var(--r);background:var(--surface);color:var(--text-2);transition:background .15s,color .15s,border-color .15s}
@@ -211,16 +165,7 @@ button{cursor:pointer}
 .notification-item button:hover{background:rgb(229 72 77 / .2)}
 .notification-empty{margin:0;padding:28px 12px;color:var(--text-3);font-size:13px;text-align:center}
 
-/* ---------- Footer ---------- */
-.bottom-line{display:flex;justify-content:space-between;gap:16px;margin-top:auto;padding:40px 0 4px;color:var(--text-3);font-size:11.5px}
-.tool-panels+.bottom-line{border-top:0}
-
 /* ---------- Responsive ---------- */
-@media(max-width:1060px){
- .hero{grid-template-columns:1fr}
- .status-card{flex-direction:row;align-items:center}
- .status-foot{flex-direction:row-reverse;align-items:center;gap:16px}
-}
 /* Phones and narrow windows: compact top bar + bottom tab bar within thumb reach. */
 @media(max-width:760px){
  .workspace,.workspace.sidebar-collapsed{display:block}
@@ -238,31 +183,11 @@ button{cursor:pointer}
  .content{min-height:100vh;padding:0 16px calc(84px + env(safe-area-inset-bottom))}
  .masthead{min-height:60px;gap:12px;margin:0 -16px;padding:0 16px}
  .mast-brand{display:block}
- .breadcrumb{font-size:11px}
  .page-title{font-size:16px}
- .update-notice{margin-top:18px;padding:12px 14px;font-size:13.5px}
- .update-notice strong{padding:5px 10px}
- .hero{margin-top:18px;gap:12px}
- .update-notice:not([hidden])+.hero{margin-top:12px}
- .intro{padding:26px 22px}
- .intro h1{font-size:30px}
- .intro-subtitle{font-size:14.5px}
- .status-card{padding:18px;gap:14px}
- .section-title{margin:30px 0 12px}
- .section-title h2{font-size:17px}
- .action-grid{grid-template-columns:1fr;gap:10px}
- .action-card{padding:18px}
  .panel-head{padding:16px}
  .panel-body{padding:16px}
- .bottom-line{padding-top:28px;font-size:11px}
-}
-@media(max-width:420px){
- .system-label{display:none}
- .status-card{flex-direction:column;align-items:stretch}
- .status-foot{flex-direction:column;align-items:flex-start}
- .dashboard-customize{padding:8px 10px}
- .dashboard-editor-row{flex-wrap:wrap}
- .bottom-line{flex-direction:column;gap:4px}
+ .update-summary{padding:18px}
+ .update-card{padding:16px}
 }
 @media(prefers-reduced-motion:reduce){
  html{scroll-behavior:auto}
