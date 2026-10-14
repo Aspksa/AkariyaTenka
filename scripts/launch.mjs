@@ -378,6 +378,40 @@ async function recoverBackendCrash(message) {
   });
 }
 
+async function processManualRollback() {
+  ending = true;
+  await stopChildrenGracefully();
+  if (releaseRuntimeLock) { await releaseRuntimeLock(); releaseRuntimeLock = undefined; }
+  const file = path.join(root, ".runtime", "github-updater", "rollback-request.json");
+  let id;
+  try {
+    const fs = await import("node:fs/promises");
+    const record = JSON.parse(await fs.readFile(file, "utf8"));
+    if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(record.id))
+      throw Error("Invalid rollback snapshot");
+    id = record.id;
+    await fs.rm(file, { force: true });
+  } catch (error) {
+    console.error("[ROLLBACK ERROR]", error);
+    await relaunch({ noOpen: true, port: currentPort });
+    return;
+  }
+  console.log("Restoring selected Akariya backup", id);
+  const result = await new Promise(resolve => {
+    const child = spawn(process.execPath,
+      [path.join(root, "scripts", "github-update.mjs"), "--rollback", id],
+      { cwd: root, stdio: "inherit", env: process.env });
+    child.once("error", () => resolve(1));
+    child.once("exit", code => resolve(code ?? 1));
+  });
+  if (result !== 0) warn("Manual rollback failed; recovering prior installation.");
+  const pending = await pendingGithubUpdate();
+  await relaunch({
+    env: pending ? { AKARIYA_PENDING_UPDATE: pending, AKARIYA_REINSTALL: "1" } : { AKARIYA_REINSTALL: "1" },
+    noOpen: false, port: currentPort
+  });
+}
+
 async function installPendingGithubUpdate() {
   ending = true;
   await stopChildrenGracefully();
@@ -424,7 +458,12 @@ function spawnManaged(label, command, commandArgs, options = {}) {
     children.delete(child);
     if (ending) return;
     if (label === "backend" && code === RESTART_CODE) {
-      void installPendingGithubUpdate();
+      const fs = import("node:fs/promises");
+      void fs.then(async api => {
+        const rollbackFile = path.join(root, ".runtime", "github-updater", "rollback-request.json");
+        try { await api.access(rollbackFile); await processManualRollback(); }
+        catch { await installPendingGithubUpdate(); }
+      });
       return;
     }
     if (code === 0 && !signal) {
