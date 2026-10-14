@@ -61,3 +61,17 @@ test("transfer request validation refuses malformed paths, overlap and missing c
  assert.throws(()=>validatePortableAction(base,{action:"restore",other:path.resolve("separate"),confirm:"ПЕРЕНЕСТИ"}),/backup/);
  assert.throws(()=>validatePortableAction(base,{action:"copy",other:path.resolve("separate"),confirm:"NO"}),/Invalid/);
 });
+
+test("interrupted transfer marker prevents a new transfer from silently overwriting recovery evidence", async () => {
+ const base=await mkdtemp(path.join(os.tmpdir(),"akariya-interrupted-"));
+ const root=path.join(base,"app"),dest=path.join(base,"copy");
+ try {
+   await mkdir(root);
+   await initializePortableIdentity(root);
+   await queuePortableAction(root,{action:"copy",other:dest,confirm:"ПЕРЕНЕСТИ"},token);
+   await writeFile(path.join(root,".portable-state","transfer-processing.json"),"interrupted");
+   await assert.rejects(performQueuedPortableAction(root,token),/interrupted/);
+   assert.equal(await readFile(path.join(root,".portable-state","transfer-processing.json"),"utf8"),"interrupted");
+   await assert.rejects(readFile(path.join(dest,".akariya-installation.json")),/ENOENT/);
+ } finally { await rm(base,{recursive:true,force:true}); }
+});
