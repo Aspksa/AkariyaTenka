@@ -10,6 +10,8 @@ export interface HttpRouteSet {
   readonly health: (context: RequestContext) => Promise<string>;
   readonly performance?: (context: RequestContext) => Promise<string>;
   readonly githubUpdates?: () => Promise<string>;
+  readonly githubUpdateRequest?: (payload: unknown) => Promise<string>;
+  readonly githubUpdateShutdown?: () => Promise<void>;
   readonly supervisorShutdown?: () => Promise<void>;
 }
 
@@ -80,6 +82,35 @@ export function createHttpApplication(
           response.writeHead(202, { "cache-control": "no-store", "content-length": "0" });
           response.end();
           setImmediate(() => { void routes.supervisorShutdown?.(); });
+          return;
+        }
+
+        if (request.method === "POST" && url.pathname === "/api/updates/install") {
+          const host = "127.0.0.1:" + config.port;
+          const peer = request.socket.remoteAddress;
+          if (!config.supervised || config.host !== "127.0.0.1" ||
+              !config.supervisorToken || !routes.githubUpdateRequest || !routes.githubUpdateShutdown ||
+              (peer !== "127.0.0.1" && peer !== "::1" && peer !== "::ffff:127.0.0.1") ||
+              request.headers.host !== host || request.headers.origin !== "http://" + host ||
+              request.headers["x-akariya-action"] !== "github-install" ||
+              request.headers["content-type"]?.split(";")[0]?.trim() !== "application/json") {
+            throw new AppError({ code: "PERMISSION", message: "Local update approval required", correlationId: id });
+          }
+          const chunks: Buffer[] = [];
+          let length = 0;
+          for await (const part of request) {
+            const bytes = Buffer.isBuffer(part) ? part : Buffer.from(part);
+            length += bytes.length;
+            if (length > 256) throw new AppError({ code: "VALIDATION", message: "Update request too large", correlationId: id });
+            chunks.push(bytes);
+          }
+          let payload: unknown;
+          try { payload = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
+          catch { throw new AppError({ code: "VALIDATION", message: "Invalid JSON", correlationId: id }); }
+          const result = await routes.githubUpdateRequest(payload);
+          response.writeHead(202, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+          response.end(result);
+          setImmediate(() => { void routes.githubUpdateShutdown?.(); });
           return;
         }
 
