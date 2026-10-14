@@ -23,9 +23,8 @@ if exist "C:\AkariyaPublisherKeys\publisher-private.pem" (
 ) else (
   echo Key folder was not found in the standard location.
   echo Enter an absolute folder path that contains your three publisher key files.
-  set /p "KEY_DIR=Key folder: "
-  if not defined KEY_DIR goto error
-  "%NODE_EXE%" "scripts\import-publisher-key.mjs" "%KEY_DIR%"
+  call :custom_folder
+  if errorlevel 1 goto error
 )
 if errorlevel 1 goto error
 echo.
@@ -33,6 +32,12 @@ echo Key import verified and completed.
 echo Preserve an independent secure backup before removing the original files.
 pause
 exit /b 0
+:custom_folder
+set /p "KEY_DIR=Key folder: "
+if not defined KEY_DIR exit /b 1
+"%NODE_EXE%" "scripts\import-publisher-key.mjs" "%KEY_DIR%"
+exit /b %ERRORLEVEL%
+
 :error
 echo.
 echo [ERROR] Key setup did not complete. No original keys were deleted.
