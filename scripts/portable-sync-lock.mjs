@@ -33,7 +33,11 @@ export async function withPortableSyncLocks(roots, task) {
     return await task();
   } finally {
     for (const {lock,nonce,owned} of acquired.reverse()) {
-      if (!owned) {\n        try { await rm(lock, { recursive: true }); } catch { /* retained for manual inspection */ }\n        continue;\n      }\n      try {
+      if (!owned) {
+        try { await rm(lock, { recursive: true }); } catch { /* retained for manual inspection */ }
+        continue;
+      }
+      try {
         const record = JSON.parse(await readFile(path.join(lock,"owner.json"),"utf8"));
         if (record.nonce === nonce) await rm(lock,{recursive:true});
       } catch { /* Preserve the lock if its ownership cannot be verified. */ }
