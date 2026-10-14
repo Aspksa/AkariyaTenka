@@ -108,6 +108,14 @@ export function createNotificationCenter(openUpdates:()=>void){
  choice("Вид карточек",[{value:"compact",title:"Компактный"},{value:"expanded",title:"Расширенный"}],settings.density,value=>{
   if(value!=="compact"&&value!=="expanded")return;settings={...settings,density:value};persistSettings();draw();
  });
+ choice("Прозрачность панели",[{value:"70",title:"70%"},{value:"85",title:"85%"},{value:"100",title:"100%"}],String(settings.opacity),value=>{
+  const opacity=Number(value);if(opacity!==70&&opacity!==85&&opacity!==100)return;
+  settings={...settings,opacity};persistSettings();draw();
+ });
+ choice("Размер текста",[{value:"90",title:"Мелкий"},{value:"100",title:"Обычный"},{value:"115",title:"Крупный"}],String(settings.fontScale),value=>{
+  const fontScale=Number(value);if(fontScale!==90&&fontScale!==100&&fontScale!==115)return;
+  settings={...settings,fontScale};persistSettings();draw();
+ });
  const hint=document.createElement("p");hint.className="notification-empty";
  hint.textContent="Фильтры скрывают записи в списке, но не удаляют события.";
  settingsPanel.append(hint);wrapper.append(settingsPanel);
