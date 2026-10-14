@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, rm, stat, readdir, utimes } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { pendingGithubUpdate, confirmGithubUpdate, recoverInterruptedUpdate } from "./github-update.mjs";
+import { pendingGithubUpdate, confirmGithubUpdate, recoverInterruptedUpdate, pruneGithubUpdateBackups } from "./github-update.mjs";
 
 const VERSION = "b".repeat(40);
 async function fixture(run) {
@@ -49,4 +49,24 @@ test("unrecognized journal paths are refused without changing installed applicat
   await journal(state, { sha: VERSION, backup, names: ["data"], existed: { data: true } });
   await assert.rejects(recoverInterruptedUpdate(root), /metadata invalid/);
   assert.equal(await readFile(path.join(root, "data", "private.json"), "utf8"), "safe");
+}));
+
+test("retains three latest recognized backups and keeps unknown folders", async () => fixture(async ({ root, state }) => {
+  const directory = path.join(state, "backups");
+  for (let i = 0; i < 5; i++) {
+    const name = "00000000-0000-4000-8000-00000000000" + i;
+    const folder = path.join(directory, name);
+    await mkdir(folder);
+    await writeFile(path.join(folder, ".akariya-backup.json"),
+      JSON.stringify({ kind: "akariya-github-backup", schemaVersion: 1 }) + "\n");
+    const timestamp = new Date(Date.UTC(2026, 0, i + 1));
+    await utimes(folder, timestamp, timestamp);
+  }
+  const unknown = path.join(directory, "00000000-0000-4000-8000-000000000099");
+  await mkdir(unknown);
+  await writeFile(path.join(unknown, "user.txt"), "preserve");
+  const removed = await pruneGithubUpdateBackups(root);
+  assert.equal(removed.length, 2);
+  assert.equal((await readdir(directory)).length, 5); // 3 recognized, 1 unknown and fixture backup-1
+  assert.equal(await readFile(path.join(unknown, "user.txt"), "utf8"), "preserve");
 }));
