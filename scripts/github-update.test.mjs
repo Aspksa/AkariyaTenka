@@ -86,7 +86,7 @@ test("appends revision-only events and rejects arbitrary data", async () => fixt
   const record = JSON.parse(history.trim());
   assert.equal(record.event, "confirmed");
   assert.equal(record.revision, VERSION);
-  assert.match(record.at, /^\\d{4}-\\d\\d-\\d\\dT/);
+  assert.match(record.at, /^\d{4}-\d\d-\d\dT/);
   await assert.rejects(appendGithubUpdateEvent("unsupported", VERSION, root), /Invalid update history/);
   await assert.rejects(appendGithubUpdateEvent("confirmed", "not-a-sha", root), /Invalid update history/);
 }));
