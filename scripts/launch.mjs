@@ -8,7 +8,7 @@ import { performance } from "node:perf_hooks";
 import { inspectWorkspaceLinks } from "./workspace-health.mjs";
 import { verifyPrebuilt } from "./prebuilt.mjs";
 import { acquireRuntimeLock } from "./runtime-lock.mjs";
-import { recoverInterruptedUpdate, pendingGithubUpdate, confirmGithubUpdate } from "./github-update.mjs";
+import { recoverInterruptedUpdate, pendingGithubUpdate, confirmGithubUpdate, recordTelemetry } from "./github-update.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(script), "..");
@@ -332,6 +332,7 @@ async function fail(message) {
     await stopChildrenGracefully();
     try {
       if (await recoverInterruptedUpdate()) {
+        await recordTelemetry("rollback_relaunch",pendingUpdateSha,{reason:"startup_failed"});
         pendingUpdateSha = undefined;
         warn("Updated version did not start. Previous application restored.");
         await relaunch({ env: { AKARIYA_REINSTALL: "1" }, noOpen: true, port: currentPort });
@@ -552,6 +553,7 @@ async function main() {
 
   if (pendingUpdateSha) {
     await confirmGithubUpdate(pendingUpdateSha);
+    await recordTelemetry("server_ready",pendingUpdateSha,{startupMs:Math.round(performance.now()-launcherStartedAt)});
     step("Update confirmed after backend and browser UI health checks");
     pendingUpdateSha = undefined;
   }
