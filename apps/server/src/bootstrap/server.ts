@@ -9,6 +9,7 @@ import { StaticWebServer } from "../services/static-web.js";
 export interface HttpRouteSet {
   readonly health: (context: RequestContext) => Promise<string>;
   readonly performance?: (context: RequestContext) => Promise<string>;
+  readonly updateStatus?: () => Promise<string>;
   readonly supervisorShutdown?: () => Promise<void>;
 }
 
@@ -94,6 +95,11 @@ export function createHttpApplication(
           if (request.method === "GET" && url.pathname === "/api/performance" && routes.performance !== undefined) {
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
             response.end(await routes.performance(context));
+            return;
+          }
+          if (request.method === "GET" && url.pathname === "/api/updates/status" && routes.updateStatus !== undefined) {
+            response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+            response.end(await routes.updateStatus());
             return;
           }
           if (url.pathname.startsWith("/api/")) {

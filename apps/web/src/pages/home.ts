@@ -59,13 +59,34 @@ export function createHomeView(): HomeView {
       .finally(() => { diagnosticsButton.disabled = false; });
   });
 
+  const updatesButton = textElement("button", "diagnostics-trigger", "Обновления");
+  updatesButton.type = "button";
+  const updatesPanel = document.createElement("section");
+  updatesPanel.className = "diagnostics";
+  updatesPanel.hidden = true;
+  let updatesLoaded = false;
+  updatesButton.addEventListener("click", () => {
+    updatesPanel.hidden = !updatesPanel.hidden;
+    if (updatesPanel.hidden || updatesLoaded) return;
+    updatesLoaded = true;
+    updatesButton.disabled = true;
+    void import("../features/updates.js")
+      .then(({ mountUpdates }) => mountUpdates(updatesPanel))
+      .catch((error: unknown) => {
+        updatesPanel.textContent = error instanceof Error ? error.message : String(error);
+      })
+      .finally(() => { updatesButton.disabled = false; });
+  });
+
   hero.append(
     textElement("p", "eyebrow", "FOUNDATION / P0–P2"),
     textElement("h1", undefined, "Akariya Tenka"),
     textElement("p", "lead", "A clean, modular foundation designed for long-term growth."),
     statusRow,
     diagnosticsButton,
-    diagnostics
+    diagnostics,
+    updatesButton,
+    updatesPanel
   );
 
   const grid = document.createElement("section");
