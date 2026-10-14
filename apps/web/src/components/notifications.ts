@@ -132,10 +132,20 @@ export function createNotificationCenter(openUpdates:()=>void){
   }catch{/* Audio may be blocked */}
  }
  function draw(){
-  const unread=notices.filter(x=>!x.read).length;count.hidden=unread===0;count.textContent=String(unread);
+  const unread=notices.filter(x=>!x.read&&!x.archived).length;count.hidden=unread===0;count.textContent=unread>99?"99+":String(unread);
+  const severity=notices.some(n=>!n.read&&!n.archived&&n.kind==="error")?"critical":notices.some(n=>!n.read&&!n.archived&&n.kind==="update")?"warning":"none";
+  dot.hidden=severity==="none";dot.dataset.severity=severity;
+  wrapper.dataset.density=settings.density;
+  wrapper.style.setProperty("--notification-opacity",String(settings.opacity/100));
+  wrapper.style.setProperty("--notification-font-scale",String(settings.fontScale/100));
+  for(const tab of tabs.querySelectorAll<HTMLButtonElement>(".notification-tab")){
+   const selected=tab.dataset.tab===activeTab;tab.setAttribute("aria-selected",String(selected));tab.tabIndex=selected?0:-1;
+  }
   toggle.setAttribute("aria-label",unread?"Уведомления, непрочитанных: "+unread:"Уведомления");
   items.replaceChildren();
-  const visible=notices.filter(n=>(!settings.unreadOnly||!n.read)&&
+  const visible=notices.filter(n=>(activeTab==="archive"?n.archived:!n.archived)&&
+   (activeTab!=="unread"||!n.read)&&(activeTab!=="important"||n.kind!=="info")&&
+   (!settings.unreadOnly||!n.read)&&
    (settings.minimumPriority==="all"||n.kind==="error"||(settings.minimumPriority==="important"&&n.kind==="update"))&&
    (n.kind==="update"?settings.showUpdates:n.kind==="error"?settings.showErrors:settings.showInfo));
   for(const item of [...visible].reverse()){
