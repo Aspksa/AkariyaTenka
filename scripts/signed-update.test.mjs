@@ -10,7 +10,7 @@ const trustedPublicKeySpkiSha256=createHash("sha256").update(publicKey.export({f
 const manifest={schemaVersion:1,repository:"Aspksa/AkariyaTenka",tag:"v1.2.3",sourceSha:"a".repeat(40),archiveSha256:"b".repeat(64),archiveSize:1234};
 const prefix="https://github.com/Aspksa/AkariyaTenka/releases/download/v1.2.3/";
 function fixture({tag="v1.2.3",tamper=false,missing=false}={}) {
- const assets=["AkariyaTenka.zip","AkariyaTenka.zip.sha256","AkariyaTenka.release.json",...missing?[]:["AkariyaTenka.release.sig"]].map(name=>({name,browser_download_url:prefix+name,size:name==="AkariyaTenka.zip"?1234:123}));
+ const assets=["AkariyaTenka.zip","AkariyaTenka.zip.sha256","AkariyaTenka.release.json",...(missing ? [] : ["AkariyaTenka.release.sig"])].map(name=>({name,browser_download_url:prefix+name,size:name==="AkariyaTenka.zip"?1234:123}));
  const signed=sign(null,canonicalReleasePayload(manifest),privateKey).toString("base64")+"\n";
  return async url=>{
   if(String(url).endsWith("/releases/latest")) return new Response(JSON.stringify({tag_name:tag,draft:false,prerelease:false,assets}));
