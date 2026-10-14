@@ -1,0 +1,23 @@
+name: Temporary PR 61 cleanup
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cleanup-update-center-branch.yml"
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = await github.rest.pulls.get({owner: context.repo.owner, repo: context.repo.repo, pull_number: 61});
+            if (!pr.data.merged || pr.data.base.ref !== 'main' ||
+                pr.data.head.ref !== 'feat/update-center-ux' ||
+                pr.data.head.sha !== 'e21ea34aacaf114e4bb4d7a41e5efbda92e0dc33') {
+              core.setFailed('Unexpected PR state; deletion refused'); return;
+            }
+            await github.rest.git.deleteRef({owner: context.repo.owner, repo: context.repo.repo, ref: 'heads/feat/update-center-ux'});
