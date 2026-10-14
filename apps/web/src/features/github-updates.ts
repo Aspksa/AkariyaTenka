@@ -218,6 +218,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
     progressBar.hidden = true;
     report.textContent = "";
     message.textContent = "Запускаю обновление. Не закрывайте AKARIYA.bat.";
+    notify("update:started:"+sha,"info","Установка обновления","Начата установка версии "+sha.slice(0,12)+".");
     void (async () => {
       try {
         const response = await fetch("/api/updates/install", {
@@ -250,6 +251,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
           // A transport failure alone does not confirm acceptance; the progress watcher checks the server journal.
         } else {
           message.textContent = error instanceof Error ? error.message : String(error);
+          notify("update:rejected:"+sha,"error","Установка отклонена",(message.textContent??"Не удалось запустить обновление.").slice(0,250));
           installing = false;
           button.disabled = false;
           install.disabled = false;
