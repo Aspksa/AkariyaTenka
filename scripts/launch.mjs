@@ -196,10 +196,14 @@ function ensureDependencies({ force = false } = {}) {
 
   if (missingDependencies.length === 0 && workspaceProblems.length === 0 && !force && !staleLock) return;
 
-  if (workspaceProblems.length > 0) {
+  // A fresh download has no node_modules yet: that is a first install, not damage to repair.
+  const firstInstall = !existsSync(path.join(root, "node_modules"));
+  if (firstInstall) {
+    console.log("First launch: dependencies have not been installed yet.");
+  } else if (workspaceProblems.length > 0) {
     warn(`npm workspace links need recovery: ${workspaceProblems.map((item) => `${item.name} (${item.reason})`).join(", ")}`);
   }
-  if (staleLock) console.log("package-lock.json changed or has not been stamped; dependencies will be synchronized.");
+  if (staleLock && !firstInstall) console.log("package-lock.json changed or has not been stamped; dependencies will be synchronized.");
 
   const installMode = existsSync(path.join(root, "package-lock.json")) ? "ci" : "install";
   runNpm("Installing dependencies", [installMode, "--no-audit", "--no-fund", "--ignore-scripts"], { network: true });
