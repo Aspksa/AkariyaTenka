@@ -10,8 +10,7 @@ export function createGithubUpdateRequest(root: string): (payload: unknown) => P
       throw new Error("Invalid update revision");
     }
     const status = await githubUpdateStatus(root);
-    if (status.latest !== payload.sha.toLowerCase() || status.current === null ||
-        status.current === status.latest) {
+    if (status.latest !== payload.sha.toLowerCase() || status.current === status.latest) {
       throw new Error("Update revision is not a new official GitHub main commit");
     }
     const directory = path.join(root, ".runtime", "github-updater");
