@@ -147,8 +147,14 @@ jobs:
         with:
           subject-path: release/AkariyaTenka.zip
           sbom-path: release/AkariyaTenka.sbom.cdx.json
+      - name: Generate signed-metadata input for tagged release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          node scripts/create-release-metadata.mjs release/AkariyaTenka.zip "$RELEASE_TAG" "$SOURCE_COMMIT" release/AkariyaTenka.release.json
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME"             release/AkariyaTenka.zip             release/AkariyaTenka.zip.sha256             release/AkariyaTenka.sbom.cdx.json             --verify-tag             --generate-notes             --title "Akariya Tenka $GITHUB_REF_NAME"
+          gh release create "$GITHUB_REF_NAME"             release/AkariyaTenka.zip             release/AkariyaTenka.zip.sha256             release/AkariyaTenka.sbom.cdx.json             release/AkariyaTenka.release.json             --verify-tag             --generate-notes             --title "Akariya Tenka $GITHUB_REF_NAME"
