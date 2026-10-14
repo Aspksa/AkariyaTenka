@@ -33,7 +33,7 @@ async function boundedResponse(response: Response, limit: number): Promise<Buffe
   return Buffer.concat(chunks);
 }
 
-function validateAsset(release: Record<string, unknown>, name: string): string {
+function validateAsset(release: Record<string, unknown>, name: string, tag: string): string {
   if (!Array.isArray(release.assets)) throw new Error("Invalid assets");
   const assets = release.assets.filter((value: unknown) =>
     !!value && typeof value === "object" && (value as Record<string, unknown>).name === name);
@@ -42,7 +42,7 @@ function validateAsset(release: Record<string, unknown>, name: string): string {
   if (typeof asset.browser_download_url !== "string") throw new Error("Missing signed asset URL");
   const url = new URL(asset.browser_download_url);
   if (url.protocol !== "https:" || url.hostname !== "github.com" ||
-      url.username || url.password || !url.pathname.startsWith("/Aspksa/AkariyaTenka/releases/download/")) {
+      url.username || url.password || url.pathname !== "/Aspksa/AkariyaTenka/releases/download/" + encodeURIComponent(tag) + "/" + name) {
     throw new Error("Untrusted signed asset URL");
   }
   return url.toString();
@@ -82,8 +82,8 @@ export function createVerifiedUpdateRoute(trust: PublisherTrust | null = PINNED_
       const release = JSON.parse((await boundedResponse(response,256*1024)).toString("utf8")) as Record<string, unknown>;
       if (release.draft !== false || release.prerelease !== false ||
           typeof release.tag_name !== "string" || !STABLE.test(release.tag_name)) throw new Error("Invalid stable release");
-      const manifestUrl = validateAsset(release,"AkariyaTenka.release.json");
-      const signatureUrl = validateAsset(release,"AkariyaTenka.release.sig");
+      const manifestUrl = validateAsset(release,"AkariyaTenka.release.json",release.tag_name);
+      const signatureUrl = validateAsset(release,"AkariyaTenka.release.sig",release.tag_name);
       const [manifestResponse, signatureResponse] = await Promise.all([
         fetchImpl(manifestUrl,fetchOptions),fetchImpl(signatureUrl,fetchOptions)
       ]);
