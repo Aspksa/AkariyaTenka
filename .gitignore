@@ -24,3 +24,11 @@ __pycache__/
 Thumbs.db
 .idea/
 .vscode/
+
+# Publisher secrets stay local and must never enter repository history
+keys/private/
+keys/secrets/
+.keys/private/
+.keys/secrets/
+**/publisher-private.pem
+**/*.pkcs8.pem
