@@ -1,4 +1,4 @@
-import { readFile, statfs } from "node:fs/promises";
+import { readFile, statfs, mkdir, appendFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
@@ -59,6 +59,25 @@ async function githubChanges(current: string | null, latest: string, request: ty
   } catch { return []; }
 }
 
+const detectedRevisions=new Set<string>();
+async function recordDiscovery(root:string,revision:string,commitDate:unknown):Promise<void>{
+ if(detectedRevisions.has(revision))return;
+ let date:string|null=null;
+ if(typeof commitDate==="string"&&Number.isFinite(Date.parse(commitDate)))date=commitDate;
+ try{
+  const directory=path.join(root,".runtime","github-updater");
+  await mkdir(directory,{recursive:true});
+  const file=path.join(directory,"discovery.jsonl");
+  try{
+   const previous=(await readFile(file,"utf8")).split("\n").slice(-200);
+   if(previous.some(line=>{try{return (JSON.parse(line) as {revision?:string}).revision===revision;}catch{return false;}})){
+    detectedRevisions.add(revision);return;
+   }
+  }catch{/* first observation */}
+  await appendFile(file,JSON.stringify({revision,detectedAt:new Date().toISOString(),commitDate:date})+"\n",{mode:0o600});
+  detectedRevisions.add(revision);
+ }catch{/* monitoring must never break update checks */}
+}
 export async function githubUpdateStatus(
   root: string,
   request: typeof fetch = fetch
@@ -72,6 +91,10 @@ export async function githubUpdateStatus(
   const latest = typeof body === "object" && body !== null && "sha" in body ? (body as {sha: unknown}).sha : null;
   if (typeof latest !== "string" || !SHA.test(latest)) throw new Error("GitHub returned an invalid revision");
   const current = await currentRevision(root);
+  if(current&&current!==latest.toLowerCase()){
+   const payload=body as {commit?:{committer?:{date?:unknown}}};
+   await recordDiscovery(root,latest.toLowerCase(),payload.commit?.committer?.date);
+  }
   // An unknown version can never be safely classified as outdated.
   const [changes, freeBytes] = await Promise.all([
     githubChanges(current, latest.toLowerCase(), request),

@@ -8,7 +8,7 @@ import { performance } from "node:perf_hooks";
 import { inspectWorkspaceLinks } from "./workspace-health.mjs";
 import { verifyPrebuilt } from "./prebuilt.mjs";
 import { acquireRuntimeLock } from "./runtime-lock.mjs";
-import { recoverInterruptedUpdate, pendingGithubUpdate, confirmGithubUpdate } from "./github-update.mjs";
+import { recoverInterruptedUpdate, pendingGithubUpdate, confirmGithubUpdate, recordTelemetry } from "./github-update.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(script), "..");
@@ -332,9 +332,10 @@ async function fail(message) {
     await stopChildrenGracefully();
     try {
       if (await recoverInterruptedUpdate()) {
+        await recordTelemetry("rollback_relaunch",pendingUpdateSha,{reason:"startup_failed"});
         pendingUpdateSha = undefined;
         warn("Updated version did not start. Previous application restored.");
-        await relaunch({ env: { AKARIYA_REINSTALL: "1" }, noOpen: true, port: currentPort });
+        await relaunch({ env: { AKARIYA_REINSTALL: "1", AKARIYA_UPDATE_RESTART: "1", AKARIYA_ROLLBACK_RECOVERY: "1" }, noOpen: true, port: currentPort });
         return;
       }
     } catch (error) {
@@ -411,7 +412,7 @@ async function processManualRollback() {
   if (result !== 0) warn("Manual rollback failed; recovering prior installation.");
   const pending = await pendingGithubUpdate();
   await relaunch({
-    env: pending ? { AKARIYA_PENDING_UPDATE: pending, AKARIYA_REINSTALL: "1" } : { AKARIYA_REINSTALL: "1" },
+    env: pending ? { AKARIYA_PENDING_UPDATE: pending, AKARIYA_REINSTALL: "1", AKARIYA_UPDATE_RESTART: "1" } : { AKARIYA_REINSTALL: "1", AKARIYA_UPDATE_RESTART: "1" },
     noOpen: false, port: currentPort
   });
 }
@@ -443,7 +444,7 @@ async function installPendingGithubUpdate() {
   });
   if (result !== 0) warn("Update failed; previous version will be started.");
   await relaunch({
-    env: result === 0 ? { AKARIYA_PENDING_UPDATE: sha, AKARIYA_REINSTALL: "1" } : { AKARIYA_REINSTALL: "1" },
+    env: result === 0 ? { AKARIYA_PENDING_UPDATE: sha, AKARIYA_REINSTALL: "1", AKARIYA_UPDATE_RESTART: "1" } : { AKARIYA_REINSTALL: "1", AKARIYA_UPDATE_RESTART: "1" },
     noOpen: false,
     port: currentPort
   });
@@ -470,7 +471,8 @@ function spawnManaged(label, command, commandArgs, options = {}) {
         catch (error) {
           if (error?.code !== "ENOENT") throw error;
         }
-        if (requested) await processManualRollback();
+        await recordTelemetry("backend_stopped",null);
+         if (requested) await processManualRollback();
         else await installPendingGithubUpdate();
       })().catch(error => { void fail("Update supervisor failed: " +
         (error instanceof Error ? error.message : String(error))); });
@@ -552,8 +554,14 @@ async function main() {
 
   if (pendingUpdateSha) {
     await confirmGithubUpdate(pendingUpdateSha);
+    await recordTelemetry("server_ready",pendingUpdateSha,{startupMs:Math.round(performance.now()-launcherStartedAt)});
     step("Update confirmed after backend and browser UI health checks");
     pendingUpdateSha = undefined;
+  }
+  if (process.env.AKARIYA_UPDATE_RESTART === "1" || rolledBackBeforeStartup) {
+    await recordTelemetry("http_recovered",pendingUpdateSha??null,{
+      rollback:process.env.AKARIYA_ROLLBACK_RECOVERY === "1" || rolledBackBeforeStartup
+    });
   }
   serverReady = true;
   const startupMs = Math.round(performance.now() - launcherStartedAt);
