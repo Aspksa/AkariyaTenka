@@ -156,7 +156,10 @@ export function createNotificationCenter(openUpdates:()=>void){
    const header=document.createElement("strong");header.textContent=item.title;
    const text=document.createElement("p");text.textContent=item.detail;
    const time=document.createElement("time");time.dateTime=new Date(item.at).toISOString();time.textContent=new Date(item.at).toLocaleString("ru-RU");
-   row.append(header,text,time);
+   const meta=document.createElement("div");meta.className="notification-event-meta";
+   const status=document.createElement("span");status.textContent=item.archived?"В архиве":item.read?"Прочитано":"Новое";
+   meta.append(time,status);body.append(header,text,meta);
+   const actions=document.createElement("div");actions.className="notification-event-actions";
    if(item.kind==="update"){
     const show=document.createElement("button");show.type="button";show.textContent="Открыть обновления";
     show.addEventListener("click",()=>{close();openUpdates();});row.append(show);
