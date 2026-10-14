@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, readFile, rm, stat, readdir, utimes } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { pendingGithubUpdate, confirmGithubUpdate, recoverInterruptedUpdate, pruneGithubUpdateBackups } from "./github-update.mjs";
+import { pendingGithubUpdate, confirmGithubUpdate, recoverInterruptedUpdate, pruneGithubUpdateBackups, appendGithubUpdateEvent } from "./github-update.mjs";
 
 const VERSION = "b".repeat(40);
 async function fixture(run) {
@@ -78,4 +78,15 @@ test("forged backup path fails closed without modifying user data", async () => 
     names: ["scripts"], existed: { scripts: true } });
   await assert.rejects(recoverInterruptedUpdate(root), /metadata invalid/);
   assert.equal(await readFile(path.join(root, "data", "private.json"), "utf8"), "safe");
+}));
+
+test("appends revision-only events and rejects arbitrary data", async () => fixture(async ({ root, state }) => {
+  await appendGithubUpdateEvent("confirmed", VERSION, root);
+  const history = await readFile(path.join(state, "history.jsonl"), "utf8");
+  const record = JSON.parse(history.trim());
+  assert.equal(record.event, "confirmed");
+  assert.equal(record.revision, VERSION);
+  assert.match(record.at, /^\d{4}-\d\d-\d\dT/);
+  await assert.rejects(appendGithubUpdateEvent("unsupported", VERSION, root), /Invalid update history/);
+  await assert.rejects(appendGithubUpdateEvent("confirmed", "not-a-sha", root), /Invalid update history/);
 }));
