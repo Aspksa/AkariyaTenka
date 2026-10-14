@@ -4,7 +4,7 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 const NAME="keys/private/signing-vault.enc";
 export async function sealProjectSecret(root,secret,passphrase){
- if(typeof passphrase!=="string"||passphrase.length<16)throw Error("Passphrase at least 16 characters required");
+ if(typeof passphrase!=="string"||passphrase.length<8)throw Error("Passphrase at least 8 characters required");
  if(!Buffer.isBuffer(secret)||secret.length===0||secret.length>64*1024)throw Error("Invalid secret");
  const salt=randomBytes(32),iv=randomBytes(12),key=scryptSync(passphrase,salt,32,{N:32768,r:8,p:1,maxmem:64*1024*1024});
  const cipher=createCipheriv("aes-256-gcm",key,iv);

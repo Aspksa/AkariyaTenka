@@ -76,7 +76,7 @@ if (process.argv[1] && path.resolve(process.argv[1])===path.resolve(fileURLToPat
     process.exitCode=2;
   } else {
     try {
-      const a=await askHidden("Create vault passphrase (minimum 16 chars): ");
+      const a=await askHidden("Create vault passphrase (minimum 8 chars): ");
       const b=await askHidden("Repeat vault passphrase: ");
       if (a !== b) throw Error("Passphrases do not match");
       const result=await importPublisherKey(scriptRoot,directory,a);
