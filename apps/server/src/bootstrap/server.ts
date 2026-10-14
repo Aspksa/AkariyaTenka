@@ -8,6 +8,8 @@ import { StaticWebServer } from "../services/static-web.js";
 
 export interface HttpRouteSet {
   readonly health: (context: RequestContext) => Promise<string>;
+  readonly assistantStatus?: () => Promise<string>;
+  readonly assistantTurn?: (payload: unknown, context: RequestContext) => Promise<string>;
   readonly performance?: (context: RequestContext) => Promise<string>;
   readonly githubUpdates?: () => Promise<string>;
   readonly githubUpdateHistory?: () => Promise<string>;
@@ -124,6 +126,25 @@ export function createHttpApplication(
         const context: RequestContext = key === undefined ? baseContext : { ...baseContext, idempotencyKey: key };
 
         await requestContext.run(context, async () => {
+          if (request.method === "GET" && url.pathname === "/api/assistant/status" && routes.assistantStatus) {
+            response.writeHead(200, {"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
+            response.end(await routes.assistantStatus()); return;
+          }
+          if (request.method === "POST" && url.pathname === "/api/assistant/turn" && routes.assistantTurn) {
+            const host = "127.0.0.1:" + config.port;
+            const peer = request.socket.remoteAddress;
+            if (config.host !== "127.0.0.1" || !["127.0.0.1","::1","::ffff:127.0.0.1"].includes(peer ?? "") ||
+                request.headers.host !== host || request.headers.origin !== "http://" + host ||
+                request.headers["content-type"]?.split(";")[0]?.trim() !== "application/json")
+              throw new AppError({code:"PERMISSION",message:"Local assistant origin required",correlationId:id});
+            const chunks: Buffer[]=[]; let size=0;
+            for await (const part of request) { const b=Buffer.isBuffer(part)?part:Buffer.from(part); size+=b.length;
+              if (size>12000) throw new AppError({code:"VALIDATION",message:"Assistant request too large",correlationId:id}); chunks.push(b); }
+            let payload:unknown; try {payload=JSON.parse(Buffer.concat(chunks).toString("utf8"));}
+            catch {throw new AppError({code:"VALIDATION",message:"Invalid JSON",correlationId:id});}
+            response.writeHead(200,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
+            response.end(await routes.assistantTurn(payload,context)); return;
+          }
           if (request.method === "GET" && url.pathname === "/api/health") {
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
             response.end(await routes.health(context));
