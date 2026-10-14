@@ -163,7 +163,8 @@ export function createHomeView():HomeView {
    }
   }catch{return;}
   if(!pending)return;
-  if(Date.now()-pending.startedAt>24*60*60*1000||pending.startedAt>Date.now()+60_000){
+  const target=pending;
+  if(Date.now()-target.startedAt>24*60*60*1000||target.startedAt>Date.now()+60_000){
    try{localStorage.removeItem(key);}catch{/* No storage */}return;
   }
   try{
@@ -171,8 +172,8 @@ export function createHomeView():HomeView {
    if(!res.ok)return;
    const data=await res.json() as {events?:{at:string;event:string;revision:string|null}[]};
    const eligible=(Array.isArray(data.events)?data.events:[]).filter(e=>
-    e && e.revision===pending.sha && typeof e.at==="string" &&
-    Number.isFinite(Date.parse(e.at)) && Date.parse(e.at)>=pending.startedAt-2000 &&
+    e && e.revision===target.sha && typeof e.at==="string" &&
+    Number.isFinite(Date.parse(e.at)) && Date.parse(e.at)>=target.startedAt-2000 &&
     ["confirmed","rolled_back","failed"].includes(e.event)
    ).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
    const result=eligible[0]?.event;
