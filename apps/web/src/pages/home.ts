@@ -16,17 +16,37 @@ function icon(name:string):HTMLElement {
 export function createHomeView():HomeView {
  const shell=el("main","workspace");
  const aside=el("aside","sidebar");
+ const collapseKey="akariya-sidebar-collapsed";
+ const collapseButton=el("button","sidebar-toggle");
+ collapseButton.type="button";
+ collapseButton.setAttribute("aria-controls","akariya-sidebar-navigation");
+ function setCollapsed(collapsed:boolean):void {
+  shell.classList.toggle("sidebar-collapsed",collapsed);
+  collapseButton.setAttribute("aria-expanded",String(!collapsed));
+  collapseButton.setAttribute("aria-label",collapsed?"Развернуть боковое меню":"Свернуть боковое меню");
+  collapseButton.title=collapsed?"Развернуть меню":"Свернуть меню";
+  collapseButton.textContent=collapsed?"❯":"❮";
+ }
+ let savedCollapsed=false;
+ try{savedCollapsed=window.localStorage.getItem(collapseKey)==="true";}catch{/* Storage can be disabled. */}
+ setCollapsed(savedCollapsed);
+ collapseButton.addEventListener("click",()=>{
+  const collapsed=!shell.classList.contains("sidebar-collapsed");
+  setCollapsed(collapsed);
+  try{window.localStorage.setItem(collapseKey,String(collapsed));}catch{/* Still allow temporary toggle. */}
+ });
  const branding=el("div","branding");
  const mark=el("img","brand-mark") as HTMLImageElement;
  mark.src="/akariya-fox.svg";mark.alt="Akariya Tenka";mark.width=46;mark.height=46;
  const brandText=el("div","brand-text");
  brandText.append(el("strong",undefined,"AKARIYA"),el("span",undefined,"TENKA · PRIVATE SYSTEM"));
- branding.append(mark,brandText);
- const nav=el("nav","navigation");nav.setAttribute("aria-label","Разделы");
+ branding.append(mark,brandText,collapseButton);
+ const nav=el("nav","navigation");nav.id="akariya-sidebar-navigation";nav.setAttribute("aria-label","Разделы");
  const sectionTitle=el("p","nav-heading","ПРОСТРАНСТВО");
  const topLink=el("button","nav-item active");
  topLink.type="button";topLink.append(icon("⌂"),el("span",undefined,"Обзор"));
  topLink.setAttribute("aria-current","page");
+ topLink.title="Обзор";topLink.setAttribute("aria-label","Обзор");
  const sectionLabel=el("p","nav-heading secondary-heading","УПРАВЛЕНИЕ");
  const tools=el("div","nav-tools");
  const panels=el("section","tool-panels");
@@ -40,6 +60,7 @@ export function createHomeView():HomeView {
   const button=el("button","nav-item");button.type="button";
   button.append(icon(info.symbol),el("span",undefined,info.name));
   button.setAttribute("aria-expanded","false");
+  button.setAttribute("aria-label",info.name);button.title=info.name;
   const panel=el("section","tool-panel");
   panel.hidden=true;
   panel.setAttribute("aria-label",info.name);
