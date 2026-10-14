@@ -85,20 +85,15 @@ export function createHomeView(): HomeView {
   portablePanel.hidden = true;
   portableButton.addEventListener("click", () => {
     portablePanel.hidden = !portablePanel.hidden;
-    if (portablePanel.hidden) return;
-    portablePanel.textContent = "Проверка переносимой установки…";
-    void fetch("/api/portable/status", {cache:"no-store"})
-      .then(async response => { if (!response.ok) throw Error("Статус недоступен"); return response.json() as Promise<Record<string, unknown>>; })
-      .then(status => {portablePanel.textContent = [
-        "Установка: " + (status.installationId ?? "не настроена"),
-        "Общий снимок: " + (status.baseline ? "создан" : "отсутствует"),
-        "Приложение запущено: " + (status.runtimeLocked ? "да" : "нет"),
-        "Перенос выполняется: " + (status.syncLocked ? "да" : "нет"),
-        "Публичный ключ: " + (status.publicKeyPresent ? "есть" : "нет"),
-        "Зашифрованное хранилище: " + (status.encryptedVaultPresent ? "есть" : "нет"),
-        "Изменения переносите только после остановки Akariya. Автоматическое слияние баз данных пока недоступно."
-      ].join("\\n"); portablePanel.style.whiteSpace = "pre-line";})
-      .catch(error => {portablePanel.textContent = error instanceof Error ? error.message : String(error);});
+    if (portablePanel.hidden || portablePanel.dataset.loaded === "true") return;
+    portablePanel.dataset.loaded = "true";
+    portablePanel.textContent = "Загрузка действий переноса…";
+    void import("../features/portable-transfer.js")
+      .then(({ mountPortableActions }) => mountPortableActions(portablePanel))
+      .catch((error: unknown) => {
+        portablePanel.textContent = error instanceof Error ? error.message : String(error);
+        delete portablePanel.dataset.loaded;
+      });
   });
 
   hero.append(
