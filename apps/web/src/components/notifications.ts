@@ -149,7 +149,10 @@ export function createNotificationCenter(openUpdates:()=>void){
    (settings.minimumPriority==="all"||n.kind==="error"||(settings.minimumPriority==="important"&&n.kind==="update"))&&
    (n.kind==="update"?settings.showUpdates:n.kind==="error"?settings.showErrors:settings.showInfo));
   for(const item of [...visible].reverse()){
-   const row=document.createElement("article");row.className="notification-item"+(item.read?"":" unread");
+   const row=document.createElement("article");row.className="notification-item notification-priority-"+item.kind+(item.read?"":" unread");
+   const symbol=document.createElement("span");symbol.className="notification-event-icon";symbol.setAttribute("aria-hidden","true");
+   symbol.append(createIcon(item.kind==="error"?"alert-triangle":item.kind==="update"?"download":"info"));
+   const body=document.createElement("div");body.className="notification-event-body";row.append(symbol,body);
    const header=document.createElement("strong");header.textContent=item.title;
    const text=document.createElement("p");text.textContent=item.detail;
    const time=document.createElement("time");time.dateTime=new Date(item.at).toISOString();time.textContent=new Date(item.at).toLocaleString("ru-RU");
