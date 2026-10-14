@@ -47,3 +47,18 @@ an update or recovery is in progress.
 The install button is deliberately unavailable if the currently installed
 revision cannot be established. In that case refresh the installation manually
 once to establish a known starting version.
+
+## Periodic checks and history
+
+While the browser's GitHub updates panel is loaded and the tab is visible, Akariya
+checks GitHub every 30 minutes. The **Проверить обновления** button performs an
+immediate manual refresh. Neither check installs code without confirmation.
+
+The `/api/updates/history` endpoint returns a bounded list of sanitized local
+update events. History is stored at `.runtime/github-updater/history.jsonl`,
+rotated when it reaches 1 MiB, and never stores API tokens or private data.
+The interface shows the latest attempts, confirmations, failures and rollbacks.
+
+Currently the update source is the official `main` branch. A stable release
+channel requires a separate vetted release publication workflow; `main` should
+not be presented as an independently verified stable release.
