@@ -30,7 +30,7 @@ export function parseNotices(value:unknown):Notice[] {
   ["update","error","info"].includes(x.kind)&&
   typeof x.title==="string"&&x.title.length<=120&&
   typeof x.detail==="string"&&x.detail.length<=300&&
-  typeof x.at==="number"&&Number.isFinite(x.at)&&typeof x.read==="boolean");
+  typeof x.at==="number"&&Number.isFinite(x.at)&&typeof x.read==="boolean"&&(x.archived===undefined||typeof x.archived==="boolean"));
  const unique=new Map<string,Notice>();
  for(const item of entries)unique.set(item.id,item);
  return [...unique.values()].slice(-30);
