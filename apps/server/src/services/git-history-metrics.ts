@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, readdir } from "node:fs/promises";
 import path from "node:path";
 const exec = promisify(execFile);
 const CODE = new Set([".ts",".tsx",".js",".jsx",".mjs",".cjs",".json",".css",".html",".ps1",".bat",".yml",".yaml",".py",".sh",".sql"]);
@@ -44,7 +44,19 @@ async function calculate(root:string):Promise<HistoryMetrics>{
   if((await git(root,"rev-parse","--is-inside-work-tree")).trim()!=="true")throw Error("No Git working tree");
   paths=(await git(root,"ls-files","-z")).split("\0").filter(Boolean);
  }catch{
-  history=false;reason="Нет доступной истории Git (например, проект распакован из ZIP).";
+  history=false;reason="Нет доступной истории Git (например, проект распакован из ZIP). Исторические показатели недоступны; текущие файлы подсчитаны.";
+  const walk=async(dir:string,relative:string,depth:number):Promise<void>=>{
+   if(depth>16||paths.length>15000)return;
+   let items;try{items=await readdir(dir,{withFileTypes:true});}catch{return;}
+   for(const item of items){
+    if(item.isSymbolicLink())continue;
+    const p=relative?relative+"/"+item.name:item.name;
+    if(SKIP.test(p) || [".git",".updates",".runtime","node_modules","dist","coverage"].includes(item.name))continue;
+    if(item.isDirectory())await walk(path.join(dir,item.name),p,depth+1);
+    else if(item.isFile())paths.push(p);
+   }
+  };
+  await walk(root,"",0);
  }
  const valid=paths.filter(p=>!SKIP.test(p) && !p.split("/").includes(".."));
  const sizes=new Map<string,number>(), languages=new Map<string,number>();
