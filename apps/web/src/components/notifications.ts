@@ -160,6 +160,8 @@ export function createNotificationCenter(openUpdates:()=>void){
    const status=document.createElement("span");status.textContent=item.archived?"В архиве":item.read?"Прочитано":"Новое";
    meta.append(time,status);body.append(header,text,meta);
    const actions=document.createElement("div");actions.className="notification-event-actions";
+   const percent=item.kind==="update"?/([0-9]{1,3})%/u.exec(item.detail):null;
+   if(percent&&Number(percent[1])<=100){const progress=document.createElement("progress");progress.className="notification-progress";progress.max=100;progress.value=Number(percent[1]);progress.setAttribute("aria-label","Прогресс "+percent[1]+"%");body.append(progress);}
    if(item.kind==="update"){
     const show=document.createElement("button");show.type="button";show.textContent="Открыть обновления";
     show.addEventListener("click",()=>{close();openUpdates();});actions.append(show);
