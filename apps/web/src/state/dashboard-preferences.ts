@@ -13,7 +13,10 @@ export function moveDashboardCard(state: DashboardPreferences, id: CardId, delta
   const order = [...state.order];
   const index = order.indexOf(id), target = index + delta;
   if (index < 0 || target < 0 || target >= order.length) return state;
-  [order[index],order[target]] = [order[target],order[index]];
+  const source = order[index], destination = order[target];
+  if (source === undefined || destination === undefined) return state;
+  order[index] = destination;
+  order[target] = source;
   return {order,hidden:[...state.hidden]};
 }
 export function toggleDashboardCard(state:DashboardPreferences,id:CardId):DashboardPreferences {
