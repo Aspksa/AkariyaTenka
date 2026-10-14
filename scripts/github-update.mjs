@@ -286,6 +286,7 @@ export async function applyGithubUpdate(sha) {
   const work = path.join(state, "staging-" + randomUUID());
   try {
     await recoverInterruptedUpdate();
+    await writeProgress("starting", 0, null, new Date().toISOString());
     await mkdir(work, { recursive: true });
     const zip = path.join(work, "source.zip");
     const extracted = path.join(work, "extracted");
