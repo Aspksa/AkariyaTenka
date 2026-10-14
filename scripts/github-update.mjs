@@ -19,6 +19,28 @@ const allowed = ["apps", "packages", "scripts", "docs", "AKARIYA.bat", "package.
 const protectedNames = new Set(["data", ".env", ".git", "node_modules", ".runtime",
   "keys", ".keys", ".updates", ".portable-state", ".akariya-version"]);
 const exists = async p => { try { await lstat(p); return true; } catch (e) { if (e.code === "ENOENT") return false; throw e; } };
+async function assertOrdinaryDirectory(directory) {
+  const info = await lstat(directory);
+  if (!info.isDirectory() || info.isSymbolicLink()) throw Error("Unsafe update directory: " + directory);
+}
+async function verifyUpdateFilesystem(installRoot = root) {
+  const runtime = path.join(installRoot, ".runtime");
+  const updater = path.join(runtime, "github-updater");
+  await assertOrdinaryDirectory(installRoot);
+  await assertOrdinaryDirectory(runtime);
+  await assertOrdinaryDirectory(updater);
+  const backups = path.join(updater, "backups");
+  if (await exists(backups)) await assertOrdinaryDirectory(backups);
+}
+async function verifyDestination(installRoot, name) {
+  const target = path.join(installRoot, name);
+  if (!await exists(target)) return;
+  const info = await lstat(target);
+  if (info.isSymbolicLink() || (!info.isFile() && !info.isDirectory()))
+    throw Error("Unsafe installation destination: " + name);
+  if (info.isDirectory()) await visit(target, name);
+}
+
 
 async function visit(dir, relative = "") {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -99,6 +121,7 @@ async function restoreMarkers(backup, installRoot = root) {
 export async function pendingGithubUpdate(installRoot = root) {
   const pending = path.join(installRoot, ".runtime", "github-updater", "pending.json");
   if (!await exists(pending)) return null;
+  await verifyUpdateFilesystem(installRoot);
   const record = JSON.parse(await readFile(pending, "utf8"));
   if (!record || typeof record.sha !== "string" || !SHA.test(record.sha)) return null;
   return record.sha;
@@ -112,11 +135,14 @@ export async function recoverInterruptedUpdate(installRoot = root) {
   const recoverState = path.join(installRoot, ".runtime", "github-updater");
   const pending = path.join(recoverState, "pending.json");
   if (!await exists(pending)) return false;
+  await verifyUpdateFilesystem(installRoot);
   const record = JSON.parse(await readFile(pending, "utf8"));
   if (!record || !Array.isArray(record.names) || !record.names.every(n => allowed.includes(n)) || !record.existed || typeof record.existed !== "object" ||
       typeof record.backup !== "string" || !record.backup.startsWith(path.join(recoverState, "backups") + path.sep)) {
     throw Error("Update recovery metadata invalid; manual inspection required");
   }
+  await assertOrdinaryDirectory(record.backup);
+  for (const name of record.names) await verifyDestination(installRoot, name);
   await restore(record.backup, record.names, record.existed, installRoot);
   await restoreMarkers(record.backup, installRoot);
   await rm(pending, { force: true });
@@ -125,6 +151,7 @@ export async function recoverInterruptedUpdate(installRoot = root) {
 export async function applyGithubUpdate(sha) {
   if (!SHA.test(sha)) throw Error("Invalid pinned GitHub commit SHA");
   await mkdir(state, { recursive: true });
+  await verifyUpdateFilesystem(root);
   const unlock = await acquireRuntimeLock(root);
   let swapped = false, backup, planned = [], existed = {};
   const work = path.join(state, "staging-" + randomUUID());
@@ -157,6 +184,7 @@ export async function applyGithubUpdate(sha) {
     await probe(staged);
     backup = path.join(state, "backups", randomUUID());
     await mkdir(backup, { recursive: true });
+    await verifyUpdateFilesystem(root);
     const pending = path.join(state, "pending.json");
     // Preserve installation metadata as well as application code.
     for (const marker of [".akariya-version", ".akariya-build.json"]) {
@@ -166,6 +194,7 @@ export async function applyGithubUpdate(sha) {
     for (const name of allowed) {
       if (await exists(path.join(staged, name))) {
         planned.push(name);
+        await verifyDestination(root, name);
         existed[name] = await exists(path.join(root, name));
       }
     }
