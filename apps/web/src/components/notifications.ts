@@ -33,7 +33,7 @@ export function parseNotices(value:unknown):Notice[] {
   typeof x.at==="number"&&Number.isFinite(x.at)&&typeof x.read==="boolean"&&(x.archived===undefined||typeof x.archived==="boolean"));
  const unique=new Map<string,Notice>();
  for(const item of entries)unique.set(item.id,item);
- return [...unique.values()].slice(-30);
+ return [...unique.values()].slice(-300);
 }
 export function createNotificationCenter(openUpdates:()=>void){
  const wrapper=document.createElement("div");wrapper.className="notification-center";
@@ -205,7 +205,7 @@ export function createNotificationCenter(openUpdates:()=>void){
   notify(item:Omit<Notice,"read"|"at">&{at?:number}){
    const old=notices.find(n=>n.id===item.id);
    if(old && old.title===item.title && old.detail===item.detail)return;
-   notices=[...notices.filter(n=>n.id!==item.id),{...item,at:item.at??Date.now(),read:false}].slice(-30);
+   notices=[...notices.filter(n=>n.id!==item.id),{...item,at:item.at??Date.now(),read:false}].slice(-300);
    prune();save();draw();
    if(!old)sound();
   },
