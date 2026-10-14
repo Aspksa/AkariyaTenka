@@ -7,7 +7,7 @@ export interface PublisherTrust {
 
 // Provision only in a separately trusted application distribution. NEVER fetch this from Releases,
 // accept it from a browser request, or load it from a mutable downloaded update archive.
-export const PINNED_PUBLISHER_TRUST: PublisherTrust | null = null;
+export const PINNED_PUBLISHER_TRUST: PublisherTrust | null = null; // Explicitly provisioned local trust is loaded by server bootstrap.
 
 const SHA40 = /^[a-f0-9]{40}$/;
 const SHA64 = /^[a-f0-9]{64}$/;
