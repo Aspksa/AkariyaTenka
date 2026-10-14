@@ -18,7 +18,7 @@ function validateSettings(value: unknown): BrainSettings {
   if (!a || typeof a.model !== "string" || !/^[\w./-]{2,150}$/.test(a.model) ||
     typeof a.temperature !== "number" || !Number.isFinite(a.temperature) || a.temperature < 0 || a.temperature > 2 ||
     typeof a.topP !== "number" || !Number.isFinite(a.topP) || a.topP <= 0 || a.topP > 1 ||
-    !Number.isInteger(a.maxCompletionTokens) || (a.maxCompletionTokens ?? 0) < 64 || (a.maxCompletionTokens ?? 0) > 16384)
+    typeof a.maxCompletionTokens !== "number" || !Number.isInteger(a.maxCompletionTokens) || (a.maxCompletionTokens ?? 0) < 64 || (a.maxCompletionTokens ?? 0) > 16384)
     throw new AppError({code:"VALIDATION",message:"Invalid brain settings"});
   return {model:a.model,temperature:a.temperature,topP:a.topP,maxCompletionTokens:a.maxCompletionTokens!};
 }
