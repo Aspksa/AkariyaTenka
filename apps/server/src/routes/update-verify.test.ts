@@ -11,7 +11,7 @@ const metadata = {
   schemaVersion: 1, repository: "Aspksa/AkariyaTenka", tag: "v1.2.3",
   sourceSha: "a".repeat(40), archiveSha256: "b".repeat(64), archiveSize: 1024
 };
-const signature = sign(null, canonicalReleasePayload(metadata), privateKey).toString("base64") + "\n";
+const signature = sign(null, Buffer.from(["akariya-release-v1", metadata.repository, metadata.tag, metadata.sourceSha, metadata.archiveSha256, String(metadata.archiveSize), ""].join("\n")), privateKey).toString("base64") + "\n";
 const prefix = "https://github.com/Aspksa/AkariyaTenka/releases/download/";
 
 function api({ assetTag = "v1.2.3", altered = false, missing = false } = {}) {
