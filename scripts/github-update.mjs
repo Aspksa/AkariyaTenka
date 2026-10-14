@@ -293,10 +293,12 @@ export async function listManualRollbackBackups(installRoot = root) {
     let record;
     try { record = JSON.parse(await readFile(marker, "utf8")); } catch { continue; }
     if (record?.kind !== "akariya-github-backup" || record?.schemaVersion !== 1) continue;
+    const entryNames = await readdir(folder);
     const versionFile = path.join(folder, ".akariya-version");
     if (!await exists(versionFile)) continue;
     const version = (await readFile(versionFile, "utf8")).trim();
-    if (!SHA.test(version)) continue;
+    if (!SHA.test(version) || !["scripts","apps","packages","package.json","package-lock.json","AKARIYA.bat"]
+      .every(name => entryNames.includes(name))) continue;
     items.push({ id: entry.name, revision: version, modified: (await lstat(folder)).mtimeMs });
   }
   return items.sort((a, b) => b.modified - a.modified).map(({ id, revision }) => ({ id, revision }));
