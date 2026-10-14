@@ -30,11 +30,13 @@ export function createAssistant(
       ? new OpenAICompatibleProvider(process.env.AKARIYA_AI_API_KEY, process.env.AKARIYA_AI_MODEL)
       : new UnavailableAssistantProvider()
 ) {
+  let activeProvider = provider;
+  const mutableProvider: AssistantProvider = {complete: (request, options) => activeProvider.complete(request,options)};
   const tools = new ToolRegistry();
   const executor = new ToolExecutor(tools, policy, approvals, audit, clock);
   registerReadOnlyTools(tools, { clock, memory: state });
   const runtime = new AssistantRuntime(
-    provider,
+    mutableProvider,
     tools,
     executor,
     state,
@@ -47,5 +49,5 @@ export function createAssistant(
       memoryScope: "assistant"
     }
   );
-  return { tools, executor, runtime, provider };
+  return { tools, executor, runtime, provider: mutableProvider, setProvider(next:AssistantProvider) {activeProvider = next;} };
 }
