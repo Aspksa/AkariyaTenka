@@ -1,3 +1,4 @@
+import { updateOutcome, updateProgress, type UpdateEvent } from "./update-progress.js";
 type UpdateStatus = {
   repository: string; branch: string; current: string | null;
   latest: string; updateAvailable: boolean | null; compareUrl: string;
@@ -54,21 +55,84 @@ export function mountGithubUpdates(parent: HTMLElement): void {
     }
   };
   let approvedSha: string | null = null;
+  let installing = false;
+  const watchInstall = async (sha: string, startedAt: number): Promise<void> => {
+    const deadline = Date.now() + 12 * 60_000;
+    while (Date.now() < deadline && parent.isConnected) {
+      await new Promise<void>(resolve => window.setTimeout(resolve, 2_000));
+      try {
+        const response = await fetch("/api/updates/history", {
+          cache: "no-store", signal: AbortSignal.timeout(4_000)
+        });
+        if (!response.ok) continue;
+        const payload = await response.json() as { events?: UpdateEvent[] };
+        const events = Array.isArray(payload.events) ? payload.events : [];
+        const outcome = updateOutcome(events, sha, startedAt);
+        if (outcome === "confirmed") {
+          message.textContent = "Akariya успешно обновлена. Открываю новую версию…";
+          window.location.reload();
+          return;
+        }
+        if (outcome === "rolled_back" || outcome === "failed") {
+          message.textContent = outcome === "rolled_back"
+            ? "Обновление не удалось. Предыдущая версия восстановлена."
+            : "Обновление не установлено. Проверьте журнал обновлений.";
+          installing = false;
+          button.disabled = false;
+          install.disabled = false;
+          install.textContent = "Установить обновление";
+          await loadHistory();
+          return;
+        }
+        message.textContent = updateProgress(events, sha, startedAt);
+      } catch {
+        message.textContent = "Akariya перезапускается. Восстанавливаю соединение…";
+      }
+    }
+    message.textContent = "Не удалось подтвердить обновление. Проверьте окно AKARIYA.bat, затем нажмите «Проверить обновления».";
+    installing = false;
+    button.disabled = false;
+    install.disabled = false;
+    install.textContent = "Установить обновление";
+  };
   install.addEventListener("click", () => {
-    if (!approvedSha || !confirm("Установить обновление Akariya из GitHub? Приложение перезапустится. Локальные данные будут сохранены.")) return;
+    if (!approvedSha || installing) return;
+    const sha = approvedSha;
+    const startedAt = Date.now();
+    installing = true;
+    button.disabled = true;
     install.disabled = true;
-    void fetch("/api/updates/install", {
-      method: "POST", headers: { "content-type": "application/json", "x-akariya-action": "github-install" },
-      body: JSON.stringify({ sha: approvedSha })
-    }).then(async response => {
-      if (!response.ok) throw new Error("Запрос отклонён (HTTP " + response.status + ")");
-      message.textContent = "Установка запущена. Проверьте окно AKARIYA.bat; приложение перезапустится.";
-    }).catch(error => { message.textContent = String(error); install.disabled = false; });
+    install.textContent = "Обновление выполняется…";
+    message.textContent = "Запускаю обновление. Не закрывайте AKARIYA.bat.";
+    void (async () => {
+      try {
+        const response = await fetch("/api/updates/install", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-akariya-action": "github-install" },
+          body: JSON.stringify({ sha })
+        });
+        if (!response.ok) {
+          throw new Error("Установка отклонена (HTTP " + response.status + ")");
+        }
+      } catch (error) {
+        // The backend intentionally shuts down after accepting the request.
+        // A dropped HTTP connection does not necessarily mean installation failed.
+        if (!(error instanceof TypeError)) {
+          message.textContent = error instanceof Error ? error.message : String(error);
+          installing = false;
+          button.disabled = false;
+          install.disabled = false;
+          install.textContent = "Установить обновление";
+          return;
+        }
+      }
+      await watchInstall(sha, startedAt);
+    })();
   });
   link.hidden = true;
   let inProgress = false;
   const check = async (): Promise<void> => {
-    if (inProgress) return;
+    if (inProgress || installing) return;
     inProgress = true; button.disabled = true; install.hidden = true; message.textContent = "Проверка GitHub…";
     try {
       const response = await fetch("/api/updates/github", { cache: "no-store" });
