@@ -54,6 +54,7 @@ export function createHomeView():HomeView {
  const panels=el("section","tool-panels");
  panels.setAttribute("aria-label","Панель управления");
  const pages:{slug:string;button:HTMLButtonElement;panel:HTMLElement;load:()=>void}[]=[];
+ let updateTopButton:HTMLButtonElement|null=null;
  const toolInfo=[
   {slug:"diagnostics",name:"Диагностика",symbol:"activity" as const,loader:()=>import("../features/diagnostics.js").then(m=>m.mountDiagnostics),caption:"Состояние и измерения системы"},
   {slug:"updates",name:"Обновления GitHub",symbol:"refresh" as const,loader:()=>import("../features/github-updates.js").then(m=>m.mountGithubUpdates),caption:"Проверка новых изменений проекта"}
@@ -61,7 +62,7 @@ export function createHomeView():HomeView {
  const workspace=el("section","content");
  const overview=el("div","overview");
  const pageTitle=el("h2","page-title");
- const notifications=createNotificationCenter(()=>{(tools.children[1] as HTMLButtonElement)?.click();});
+ const notifications=createNotificationCenter(()=>{navigate("updates");});
  window.addEventListener("akariya-update-notice",(event:Event)=>{
   const data=(event as CustomEvent<unknown>).detail;
   if(!data||typeof data!=="object")return;
@@ -77,7 +78,7 @@ export function createHomeView():HomeView {
  function highlight(active:HTMLButtonElement|null):void {
   // The overview has no heading; section pages show their name in the top bar.
   pageTitle.textContent=active===topLink?"":active?.getAttribute("aria-label")??"";
-  for(const other of [topLink,...Array.from(tools.querySelectorAll<HTMLButtonElement>("button"))]){
+  for(const other of [topLink,...Array.from(tools.querySelectorAll<HTMLButtonElement>("button")), ...(updateTopButton?[updateTopButton]:[])]){
    other.classList.toggle("active",other===active);
    if(other===active)other.setAttribute("aria-current","page");
    else other.removeAttribute("aria-current");
@@ -111,7 +112,9 @@ export function createHomeView():HomeView {
    });
   }});
   button.addEventListener("click",()=>{navigate(info.slug);});
-  tools.append(button);panels.append(panel);
+  if(info.slug==="updates")updateTopButton=button;
+  else tools.append(button);
+  panels.append(panel);
  }
  nav.append(sectionTitle,topLink,sectionLabel,tools);
  topLink.addEventListener("click",()=>{navigate("");});
@@ -146,6 +149,13 @@ export function createHomeView():HomeView {
  const mastTitle=el("div","mast-title");
  mastTitle.append(pageTitle);
  const mastRight=el("div","mast-right");
+ if(updateTopButton){
+  updateTopButton.className="notification-toggle updates-topbar-toggle";
+  updateTopButton.replaceChildren(createIcon("refresh"));
+  updateTopButton.setAttribute("aria-label","Обновления GitHub");
+  updateTopButton.title="Обновления GitHub";
+  mastRight.append(updateTopButton);
+ }
  mastRight.append(notifications.element);
  mast.append(mastBrand,mastTitle,mastRight);
 
