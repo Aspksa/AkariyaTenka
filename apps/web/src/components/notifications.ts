@@ -162,22 +162,28 @@ export function createNotificationCenter(openUpdates:()=>void){
    const actions=document.createElement("div");actions.className="notification-event-actions";
    if(item.kind==="update"){
     const show=document.createElement("button");show.type="button";show.textContent="Открыть обновления";
-    show.addEventListener("click",()=>{close();openUpdates();});row.append(show);
+    show.addEventListener("click",()=>{close();openUpdates();});actions.append(show);
    }
-   items.append(row);
+   const archive=document.createElement("button");archive.type="button";archive.textContent=item.archived?"Вернуть":"В архив";
+   archive.addEventListener("click",()=>{notices=notices.map(n=>n.id===item.id?{...n,archived:!n.archived,read:true}:n);save();draw();});actions.append(archive);
+   if(!item.read&&!item.archived){
+    const mark=document.createElement("button");mark.type="button";mark.textContent="Прочитано";
+    mark.addEventListener("click",()=>{notices=notices.map(n=>n.id===item.id?{...n,read:true}:n);save();draw();});actions.append(mark);
+   }
+   body.append(actions);items.append(row);
   }
-  if(!visible.length){const empty=document.createElement("p");empty.className="notification-empty";empty.textContent="Пока нет уведомлений";items.append(empty);}
+  if(!visible.length){const empty=document.createElement("p");empty.className="notification-empty";empty.textContent=activeTab==="archive"?"Архив пуст":"Нет уведомлений";items.append(empty);}
  }
  function close(){panel.hidden=true;settingsPanel.hidden=true;toggle.setAttribute("aria-expanded","false");}
  toggle.addEventListener("click",()=>{
   const opening=panel.hidden;close();panel.hidden=!opening;toggle.setAttribute("aria-expanded",String(opening));
-  if(opening){notices=notices.map(n=>({...n,read:true}));save();draw();}
+  if(opening)draw();
  });
  toggle.addEventListener("contextmenu",event=>{
   event.preventDefault();const opening=settingsPanel.hidden;close();
   settingsPanel.hidden=!opening;toggle.setAttribute("aria-expanded",String(opening));
  });
- clear.addEventListener("click",()=>{notices=[];save();draw();});
+ clear.addEventListener("click",()=>{notices=notices.filter(n=>n.archived);save();draw();});
  wrapper.addEventListener("keydown",event=>{if(event.key==="Escape"){close();toggle.focus();}});
  document.addEventListener("pointerdown",event=>{if(!wrapper.contains(event.target as Node))close();});
  prune();draw();
