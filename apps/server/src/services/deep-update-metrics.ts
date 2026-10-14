@@ -126,6 +126,24 @@ async function calculate(root:string):Promise<DeepMetrics>{
   for(const line of events){try{const v=JSON.parse(line) as {event?:string};if(v.event==="prepared")prepared++;if(v.event==="confirmed")confirmed++;}catch{/* corrupt entry */}}
   if(prepared>0)successful=Math.round(Math.min(1,confirmed/prepared)*1000)/10;
  }catch{/* no event history */}
+ let downloadSpeed:string|null=null,preparation:string|null=null,rollbackTime:string|null=null;
+ try {
+  const file=path.join(updates,"telemetry.jsonl");
+  const info=await lstat(file);
+  if(info.isFile()&&!info.isSymbolicLink()&&info.size<=1048576){
+   const lines=(await readFile(file,"utf8")).split("\n").slice(-4000);
+   for(const line of lines){
+    let entry:unknown;try{entry=JSON.parse(line);}catch{continue;}
+    if(!entry||typeof entry!=="object")continue;
+    const v=entry as {event?:unknown;bytes?:unknown;durationMs?:unknown};
+    if(typeof v.durationMs!=="number"||!Number.isFinite(v.durationMs)||v.durationMs<=0||v.durationMs>86400000)continue;
+    if(v.event==="download_complete"&&typeof v.bytes==="number"&&Number.isSafeInteger(v.bytes)&&v.bytes>=0)
+     downloadSpeed=(v.bytes/1048576/(v.durationMs/1000)).toFixed(2)+" МиБ/с";
+    if(v.event==="prepared")preparation=(v.durationMs/1000).toFixed(1)+" с";
+    if(v.event==="rollback_complete")rollbackTime=(v.durationMs/1000).toFixed(1)+" с";
+   }
+  }
+ }catch{/* no telemetry on older installations */}
  const unavailable="Не измеряется текущей версией updater";
  const metric=(label:string,value:string|null,detail:string):Item=>({label,value,detail});
  return {measuredAt:new Date().toISOString(),caveats:[
@@ -164,13 +182,13 @@ async function calculate(root:string):Promise<DeepMetrics>{
   ]},
   {title:"⚙️ Измерения updater",metrics:[
    metric("📡 Скорость обнаружения обновления",null,unavailable+" — нужны времена публикации и проверки"),
-   metric("⬇️ Скорость загрузки",null,unavailable+" — нужны байты и длительность загрузки"),
+   metric("⬇️ Скорость загрузки",downloadSpeed,downloadSpeed?"Последняя завершённая загрузка":"Нет измерений загрузки"),
    metric("♻️ Повторное использование",null,"Текущий updater скачивает полный архив; доля совпадений не измеряется"),
    metric("🔎 Скорость проверки хешей",null,unavailable),
-   metric("🧪 Время подготовки",null,"Нужны события начала download и ready для одной операции"),
+   metric("🧪 Время подготовки",preparation,"От старта updater до prepared"),
    metric("⏸️ Простой при установке",null,unavailable+" — нужны замеры недоступности"),
    metric("✅ Успешность обновлений",successful===null?null:n(successful)+"%","Приблизительно: confirmed/prepared по локальному журналу"),
-   metric("🛟 Время восстановления после rollback",null,unavailable),
+   metric("🛟 Время восстановления после rollback",rollbackTime,"Файловый rollback; запуск сервера не включён"),
    metric("📦 Эффективность дельты",null,"Загрузка полного архива; метрика дельты неприменима"),
    metric("🗄️ Вес резервных копий",n(backupsBytes)+" байт","Объём "+n(backupsCount)+" файлов в локальных backups")
   ]}
