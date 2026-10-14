@@ -105,6 +105,7 @@ export function createHomeView():HomeView {
  void checkUpdateNotice();
  window.setInterval(()=>{void checkUpdateNotice();},30*60*1000);
  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")void checkUpdateNotice();});
+ window.addEventListener("akariya-update-snooze",()=>{void checkUpdateNotice();});
  const status=el("section","status-card");
  const statusCaption=el("div","status-caption");
  statusCaption.append(el("span","status-icon","✦"),el("div","status-description"));
