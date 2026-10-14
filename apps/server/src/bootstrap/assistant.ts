@@ -20,9 +20,15 @@ export function createAssistant(
   audit: AuditSink,
   clock: Clock,
   state: AssistantState,
-  provider: AssistantProvider = process.env.AKARIYA_AI_API_KEY && process.env.AKARIYA_AI_MODEL
-    ? new OpenAICompatibleProvider(process.env.AKARIYA_AI_API_KEY, process.env.AKARIYA_AI_MODEL)
-    : new UnavailableAssistantProvider()
+  provider: AssistantProvider = process.env.AKARIYA_CLOUDRU_API_KEY
+    ? new OpenAICompatibleProvider(
+        process.env.AKARIYA_CLOUDRU_API_KEY,
+        process.env.AKARIYA_CLOUDRU_MODEL || "ai-sage/GigaChat3-10B-A1.8B",
+        "https://foundation-models.api.cloud.ru/v1/chat/completions"
+      )
+    : process.env.AKARIYA_AI_API_KEY && process.env.AKARIYA_AI_MODEL
+      ? new OpenAICompatibleProvider(process.env.AKARIYA_AI_API_KEY, process.env.AKARIYA_AI_MODEL)
+      : new UnavailableAssistantProvider()
 ) {
   const tools = new ToolRegistry();
   const executor = new ToolExecutor(tools, policy, approvals, audit, clock);

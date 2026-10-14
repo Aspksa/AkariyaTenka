@@ -17,7 +17,7 @@ export function mountAssistantAvatar(): void {
  const heading=document.createElement("h3");heading.textContent="Настройки · Мозг ИИ";
  const status=document.createElement("p");status.textContent="Проверка подключения…";
  const memory=document.createElement("p");memory.textContent="Память: локальное хранение разговоров";
- const hint=document.createElement("p");hint.textContent="Для подключения модели задайте AKARIYA_AI_API_KEY и AKARIYA_AI_MODEL в окружении запуска. Ключ никогда не вводится в браузере.";
+ const hint=document.createElement("p");hint.textContent="Cloud.ru: настройте AKARIYA_CLOUDRU_API_KEY и при необходимости AKARIYA_CLOUDRU_MODEL в окружении запуска. Ключ никогда не вводится в браузере.";
  settings.append(heading,status,memory,hint);
  chat.append(header,log,settings,form);
  document.body.append(avatar,chat);
@@ -29,8 +29,8 @@ export function mountAssistantAvatar(): void {
  async function refresh():Promise<void>{
    try {const response=await fetch("/api/assistant/status",{cache:"no-store"});
      if(!response.ok)throw Error("HTTP "+response.status);
-     const data=await response.json() as {configured:boolean;model:string|null};
-     status.textContent=data.configured?"Модель: "+data.model:"Модель не подключена";
+     const data=await response.json() as {configured:boolean;model:string|null;provider?:string};
+     status.textContent=data.configured?"Провайдер: "+(data.provider??"AI")+" · Модель: "+data.model:"Модель не подключена";
    }catch{status.textContent="Состояние ИИ недоступно";}
  }
  avatar.addEventListener("click",()=>{chat.hidden=!chat.hidden;if(!chat.hidden){void refresh();input.focus();}});
