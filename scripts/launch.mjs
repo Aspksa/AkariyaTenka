@@ -10,6 +10,7 @@ import { inspectWorkspaceLinks } from "./workspace-health.mjs";
 import { verifyPrebuilt } from "./prebuilt.mjs";
 import { assertPortableLaunchAllowed } from "./portable-launch-guard.mjs";
 import { acquirePortableRuntime } from "./portable-runtime-lock.mjs";
+import { PORTABLE_EXIT_CODE, performQueuedPortableAction } from "./portable-supervised.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(script), "..");
@@ -382,6 +383,20 @@ async function recoverBackendCrash(message) {
   });
 }
 
+async function runQueuedPortableTransfer() {
+  ending = true;
+  await stopChildrenGracefully();
+  if (releaseRuntimeLock) { await releaseRuntimeLock(); releaseRuntimeLock = undefined; }
+  try {
+    const result = await performQueuedPortableAction(root, supervisorToken);
+    if (result.status === "success") step("Portable action finished and verified");
+    else warn("Portable action refused or failed: " + result.error);
+  } catch (error) {
+    warn("Portable action failed before execution: " + (error instanceof Error ? error.message : String(error)));
+  }
+  await relaunch({ noOpen: false, port: currentPort });
+}
+
 function spawnManaged(label, command, commandArgs, options = {}) {
   const child = spawn(command, commandArgs, {
     cwd: options.cwd ?? root,
@@ -394,6 +409,11 @@ function spawnManaged(label, command, commandArgs, options = {}) {
   child.once("exit", (code, signal) => {
     children.delete(child);
     if (ending) return;
+    if (label === "backend" && code === PORTABLE_EXIT_CODE) {
+      step("Portable transfer requested; server has exited");
+      void runQueuedPortableTransfer();
+      return;
+    }
     if (label === "backend" && code === RESTART_CODE) {
       step("Restart requested by Akariya");
       void relaunch({ noOpen: true, port: currentPort });
