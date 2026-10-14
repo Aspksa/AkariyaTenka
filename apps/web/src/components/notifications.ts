@@ -48,7 +48,15 @@ export function createNotificationCenter(openUpdates:()=>void){
  const title=document.createElement("strong");title.textContent="Уведомления";
  const clear=document.createElement("button");clear.type="button";clear.textContent="Очистить";clear.className="notification-clear";
  heading.append(title,clear);
- const items=document.createElement("div");items.className="notification-items";panel.append(heading,items);wrapper.append(toggle,panel);
+ const tabs=document.createElement("div");tabs.className="notification-tabs";tabs.setAttribute("role","tablist");tabs.setAttribute("aria-label","Фильтр уведомлений");
+ type Tab="all"|"unread"|"important"|"archive";
+ let activeTab:Tab="all";
+ for(const [key,label] of [["all","Все"],["unread","Непрочитанные"],["important","Важные"],["archive","Архив"]] as const){
+  const tab=document.createElement("button");tab.type="button";tab.className="notification-tab";tab.textContent=label;
+  tab.dataset.tab=key;tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(key===activeTab));
+  tab.addEventListener("click",()=>{activeTab=key;draw();});tabs.append(tab);
+ }
+ const items=document.createElement("div");items.className="notification-items";panel.append(heading,tabs,items);wrapper.append(toggle,panel);
  let notices:Notice[]=[];
  let settings={...defaults};
  try{settings=parseNoticeSettings(JSON.parse(localStorage.getItem(SETTINGS_KEY)??"null"));}catch{/* storage unavailable */}
