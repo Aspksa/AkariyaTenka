@@ -150,6 +150,40 @@ export function mountGithubUpdates(parent: HTMLElement): void {
     finally{loadingStats=false;refreshStats.disabled=false;}
   };
   refreshStats.addEventListener("click",()=>{void loadStatistics();});
+
+  const deepSection=document.createElement("section");deepSection.className="update-card";
+  const deepHeading=document.createElement("h3");deepHeading.textContent="🔬 Углублённая аналитика проекта";
+  const deepStatus=document.createElement("p");deepStatus.textContent="История, код и измерения обновлений";
+  const deepRefresh=document.createElement("button");deepRefresh.type="button";deepRefresh.className="panel-button ghost";deepRefresh.textContent="Рассчитать дополнительные показатели";
+  const deepGroups=document.createElement("div");
+  deepSection.append(deepHeading,deepStatus,deepRefresh,deepGroups);
+  parent.insertBefore(deepSection,parent.lastElementChild);
+  let deepPending=false;
+  async function loadDeep():Promise<void>{
+   if(deepPending)return;deepPending=true;deepRefresh.disabled=true;deepStatus.textContent="Вычисление показателей…";
+   try{
+    const response=await fetch("/api/updates/statistics/deep",{cache:"no-store",signal:AbortSignal.timeout(90000)});
+    if(!response.ok)throw Error("HTTP "+response.status);
+    const data=await response.json() as {sections?:{title:string;metrics:{label:string;value:string|null;detail:string}[]}[];caveats?:string[]};
+    deepGroups.replaceChildren();
+    for(const section of data.sections??[]){
+      const heading=document.createElement("h4");heading.textContent=section.title;deepGroups.append(heading);
+      const grid=document.createElement("div");grid.className="akariya-git-stat-grid";
+      for(const record of section.metrics??[]){
+        const tile=document.createElement("article");tile.className="akariya-git-stat";
+        const name=document.createElement("strong");name.textContent=record.label;
+        const value=document.createElement("p");value.className="akariya-git-stat-value";value.textContent=record.value??"Нет данных";
+        const description=document.createElement("small");description.textContent=record.detail;
+        tile.append(name,value,description);grid.append(tile);
+      }
+      deepGroups.append(grid);
+    }
+    deepStatus.textContent=(data.caveats??[]).join(" ");
+   }catch(error){deepStatus.textContent="Не удалось рассчитать показатели: "+(error instanceof Error?error.message:String(error));}
+   finally{deepPending=false;deepRefresh.disabled=false;}
+  }
+  deepRefresh.addEventListener("click",()=>{void loadDeep();});
+  void loadDeep();
   const snoozeKey = "akariya-update-snooze";
   function snoozed(sha: string): boolean {
     try {
