@@ -14,7 +14,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   link.target = "_blank"; link.rel = "noopener noreferrer";
   link.textContent = "Посмотреть изменения в GitHub";
   const install = document.createElement("button");
-  install.type = "button"; install.className = "panel-button";
+  install.type = "button"; install.className = "panel-button primary";
   install.textContent = "Установить обновление"; install.hidden = true;
   const rollbackTitle = document.createElement("h3");
   rollbackTitle.textContent = "Вернуть предыдущую версию";
