@@ -40,6 +40,7 @@ export function createNotificationCenter(openUpdates:()=>void){
  const toggle=document.createElement("button");toggle.type="button";toggle.className="notification-toggle";
  toggle.append(createIcon("bell"));toggle.setAttribute("aria-label","Уведомления");
  toggle.setAttribute("aria-expanded","false");toggle.title="Уведомления";
+ const dot=document.createElement("span");dot.className="notification-severity-dot";dot.hidden=true;dot.setAttribute("aria-hidden","true");toggle.append(dot);
  const count=document.createElement("span");count.className="notification-count";count.hidden=true;toggle.append(count);
  const panel=document.createElement("section");panel.className="notification-panel";panel.hidden=true;
  panel.setAttribute("aria-label","Центр уведомлений");
