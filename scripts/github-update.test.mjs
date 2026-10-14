@@ -9,7 +9,7 @@ const VERSION = "b".repeat(40);
 async function fixture(run) {
   const root = await mkdtemp(path.join(os.tmpdir(), "akariya-update-confirm-"));
   const state = path.join(root, ".runtime", "github-updater");
-  const backup = path.join(state, "backups", "backup-1");
+  const backup = path.join(state, "backups", "00000000-0000-4000-8000-00000000ff00");
   try {
     await mkdir(backup, { recursive: true });
     await run({ root, state, backup });
@@ -67,6 +67,15 @@ test("retains three latest recognized backups and keeps unknown folders", async 
   await writeFile(path.join(unknown, "user.txt"), "preserve");
   const removed = await pruneGithubUpdateBackups(root);
   assert.equal(removed.length, 2);
-  assert.equal((await readdir(directory)).length, 5); // 3 recognized, 1 unknown and fixture backup-1
+  assert.equal((await readdir(directory)).length, 5); // 3 recognized and 2 unknown backups
   assert.equal(await readFile(path.join(unknown, "user.txt"), "utf8"), "preserve");
+}));
+
+test("forged backup path fails closed without modifying user data", async () => fixture(async ({ root, state, backup }) => {
+  await mkdir(path.join(root, "data"));
+  await writeFile(path.join(root, "data", "private.json"), "safe");
+  await journal(state, { sha: VERSION, backup: path.join(state, "backups", "..", "..", "data"),
+    names: ["scripts"], existed: { scripts: true } });
+  await assert.rejects(recoverInterruptedUpdate(root), /metadata invalid/);
+  assert.equal(await readFile(path.join(root, "data", "private.json"), "utf8"), "safe");
 }));
