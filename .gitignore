@@ -7,7 +7,6 @@ coverage/
 !.env.example
 data/
 .runtime/
-.updates/
 .akariya-version
 runtime/
 tmp/
@@ -25,10 +24,14 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Publisher secrets stay local and must never enter repository history
 keys/private/
 keys/secrets/
 .keys/private/
 .keys/secrets/
 **/publisher-private.pem
 **/*.pkcs8.pem
+
+# Never commit local credentials or historical secret storage
+keys/
+.keys/
+**/publisher-private.pem
