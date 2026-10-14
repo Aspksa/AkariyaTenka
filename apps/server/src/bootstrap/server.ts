@@ -90,9 +90,11 @@ export function createHttpApplication(
 
         if (request.method === "POST" && url.pathname === "/api/portable/action") {
           const origin = request.headers.origin;
+          const peer = request.socket.remoteAddress;
+          const loopback = peer === "127.0.0.1" || peer === "::1" || peer === "::ffff:127.0.0.1";
           const hostname = request.headers.host;
           const expected = "127.0.0.1:" + config.port;
-          if (!config.supervised || !config.supervisorToken || hostname !== expected ||
+          if (!loopback || config.host !== "127.0.0.1" || !config.supervised || !config.supervisorToken || hostname !== expected ||
               origin !== "http://" + expected || request.headers["x-akariya-action"] !== "portable" ||
               request.headers["content-type"]?.split(";")[0].trim() !== "application/json" ||
               routes.portableAction === undefined || routes.portableShutdown === undefined) {
