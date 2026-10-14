@@ -5,7 +5,7 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable, Transform } from "node:stream";
 
-const RELEASES_API = "https://api.github.com/repos/Aspksa/AkariyaTenka/releases/latest";
+export const RELEASES_API = "https://api.github.com/repos/Aspksa/AkariyaTenka/releases/latest";
 const MAX_METADATA_BYTES = 256 * 1024;
 const MAX_ARCHIVE_BYTES = 256 * 1024 * 1024;
 const SHA256_RE = /^[a-f0-9]{64}$/i;
@@ -50,7 +50,7 @@ async function request(url, { fetchImpl, signal }) {
   return response;
 }
 
-async function getResponse(url, options) {
+export async function getResponse(url, options) {
   let current = url;
   for (let i = 0; i < 6; i++) {
     const response = await request(current, options);
@@ -68,7 +68,7 @@ async function getResponse(url, options) {
   throw new Error("Too many release redirects");
 }
 
-async function readBounded(response, maximum) {
+export async function readBounded(response, maximum) {
   const chunks = [];
   let size = 0;
   if (!response.body) throw new Error("Missing release response body");
@@ -80,7 +80,7 @@ async function readBounded(response, maximum) {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function assetOf(release, name) {
+export function assetOf(release, name) {
   const matches = release.assets.filter((asset) => asset?.name === name);
   if (matches.length !== 1 || !matches[0].browser_download_url) throw new Error(`Missing or duplicate release asset: ${name}`);
   approvedHttpsUrl(matches[0].browser_download_url);
