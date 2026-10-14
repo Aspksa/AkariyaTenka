@@ -9,6 +9,7 @@ import { applyPreparedUpdate, applyRollbackRequest, confirmUpdate, rollbackFaile
 import { inspectWorkspaceLinks } from "./workspace-health.mjs";
 import { verifyPrebuilt } from "./prebuilt.mjs";
 import { assertPortableLaunchAllowed } from "./portable-launch-guard.mjs";
+import { acquirePortableRuntime } from "./portable-runtime-lock.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(script), "..");
@@ -26,6 +27,7 @@ let ending = false;
 let serverReady = false;
 let updateApplied = false;
 let currentPort;
+let releaseRuntimeLock;
 
 function parseArgs(argv) {
   const options = { dev: false, noOpen: false, skipChecks: false, port: undefined };
@@ -135,6 +137,7 @@ async function finish(code = 0) {
   if (ending) return;
   ending = true;
   await stopChildrenGracefully();
+  if (releaseRuntimeLock) await releaseRuntimeLock();
   process.exit(code);
 }
 
@@ -303,6 +306,7 @@ async function relaunch({ env = {}, noOpen = false, port, delayMs = 0 } = {}) {
   await stopChildrenGracefully();
   if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
 
+  if (releaseRuntimeLock) { await releaseRuntimeLock(); releaseRuntimeLock = undefined; }
   const child = spawn(process.execPath, [script, ...argsForRelaunch({ noOpen, port: port ?? currentPort })], {
     cwd: root,
     stdio: "inherit",
@@ -331,9 +335,10 @@ async function fail(message) {
     } catch (error) {
       console.error(`[ERROR] Automatic rollback failed: ${error?.message ?? error}`);
     }
+    if (releaseRuntimeLock) await releaseRuntimeLock();
     process.exit(1);
   }
-  finish(1);
+  await finish(1);
 }
 
 function nextCrashState() {
@@ -443,6 +448,7 @@ async function main() {
   if (!Number.isInteger(major) || major < 20) throw new Error(`Node.js 20+ is required; found ${process.version}`);
 
   await assertPortableLaunchAllowed(root);
+  releaseRuntimeLock = await acquirePortableRuntime(root);
   const touched = await prepareInstallation();
   const prebuilt = options.dev ? null : await verifyPrebuilt(root);
 

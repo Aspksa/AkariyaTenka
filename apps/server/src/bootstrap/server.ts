@@ -12,6 +12,7 @@ export interface HttpRouteSet {
   readonly updateStatus?: () => Promise<string>;
   readonly updateCheck?: () => Promise<string>;
   readonly updateVerify?: () => Promise<string>;
+  readonly portableStatus?: () => Promise<string>;
   readonly supervisorShutdown?: () => Promise<void>;
 }
 
@@ -112,6 +113,11 @@ export function createHttpApplication(
           if (request.method === "GET" && url.pathname === "/api/updates/verify" && routes.updateVerify !== undefined) {
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
             response.end(await routes.updateVerify());
+            return;
+          }
+          if (request.method === "GET" && url.pathname === "/api/portable/status" && routes.portableStatus !== undefined) {
+            response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+            response.end(await routes.portableStatus());
             return;
           }
           if (url.pathname.startsWith("/api/")) {
