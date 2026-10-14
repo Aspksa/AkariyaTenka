@@ -30,6 +30,33 @@ export async function githubUpdateHistory(root: string): Promise<{
   return { events: events.reverse() };
 }
 
+export interface UpdateDownloadProgress {
+  phase: string; received: number; total: number | null; startedAt: string; at: string;
+}
+export async function githubUpdateProgress(root: string): Promise<UpdateDownloadProgress | null> {
+  const file = path.join(root, ".runtime", "github-updater", "progress.json");
+  let info;
+  try { info = await lstat(file); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  if (!info.isFile() || info.isSymbolicLink() || info.size > 1024) return null;
+  let record: unknown;
+  try { record = JSON.parse(await readFile(file, "utf8")); } catch { return null; }
+  if (!record || typeof record !== "object") return null;
+  const v = record as Record<string, unknown>;
+  if (typeof v.phase !== "string" ||
+      !["starting","downloading","downloaded","retrying","validating","installing","restarting","confirmed","failed","rolled_back"].includes(v.phase) ||
+      typeof v.received !== "number" || !Number.isSafeInteger(v.received) || v.received < 0 ||
+      (v.total !== null && (typeof v.total !== "number" || !Number.isSafeInteger(v.total) || v.total < 0)) ||
+      typeof v.startedAt !== "string" || Number.isNaN(Date.parse(v.startedAt)) ||
+      typeof v.at !== "string" || Number.isNaN(Date.parse(v.at))) return null;
+  return v as unknown as UpdateDownloadProgress;
+}
 export function createGithubUpdateHistoryRoute(root: string): () => Promise<string> {
-  return async () => JSON.stringify(await githubUpdateHistory(root));
+  return async () => {
+    const [history, progress] = await Promise.all([githubUpdateHistory(root), githubUpdateProgress(root)]);
+    return JSON.stringify({ ...history, progress });
+  };
 }

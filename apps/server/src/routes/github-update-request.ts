@@ -10,6 +10,7 @@ export function createGithubUpdateRequest(root: string): (payload: unknown) => P
       throw new Error("Invalid update revision");
     }
     const status = await githubUpdateStatus(root);
+    if (status.enoughSpace === false) throw new Error("Not enough free disk space (768 MiB required)");
     if (status.latest !== payload.sha.toLowerCase() || status.current === null || status.current === status.latest) {
       throw new Error("Update revision is not a new official GitHub main commit");
     }

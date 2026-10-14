@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, writeFile, appendFile, rm, rename, lstat, readdir, copyFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, appendFile, rm, rename, lstat, readdir, copyFile, statfs } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { acquireRuntimeLock } from "./runtime-lock.mjs";
@@ -80,14 +80,64 @@ async function run(command, args, cwd, env = process.env) {
     child.once("exit", code => code === 0 ? resolve() : reject(Error(command + " failed: " + code)));
   });
 }
-async function download(sha, file) {
+const MIN_FREE_BYTES = 768 * 1024 * 1024;
+export async function assertUpdateDiskSpace(installRoot = root) {
+  const disk = await statfs(installRoot);
+  const available = disk.bavail * disk.bsize;
+  if (!Number.isFinite(available) || available < MIN_FREE_BYTES)
+    throw Error("Not enough free disk space for installation and backup (requires at least 768 MiB)");
+  return available;
+}
+async function writeProgress(phase, received = 0, total = null, startedAt = null) {
+  const dest = path.join(state, "progress.json");
+  const temp = path.join(state, "progress.tmp");
+  let previous = {};
+  try { previous = JSON.parse(await readFile(dest, "utf8")); } catch { /* first event */ }
+  const data = {
+    phase, received, total, startedAt: startedAt ?? previous.startedAt ?? new Date().toISOString(),
+    at: new Date().toISOString()
+  };
+  await writeFile(temp, JSON.stringify(data) + "\n");
+  await rename(temp, dest);
+}
+async function downloadOnce(sha, file, attempt) {
   const url = "https://github.com/Aspksa/AkariyaTenka/archive/" + sha + ".zip";
   const response = await fetch(url, { signal: AbortSignal.timeout(120000), redirect: "follow" });
-  if (!response.ok || !response.body) throw Error("GitHub archive download failed: " + response.status);
-  let bytes = 0;
-  const chunks = Readable.fromWeb(response.body);
-  chunks.on("data", c => { bytes += c.length; if (bytes > 40_000_000) chunks.destroy(Error("Archive too large")); });
-  await pipeline(chunks, createWriteStream(file, { flags: "wx" }));
+  if (!response.ok || !response.body) throw Error("GitHub download failed: HTTP " + response.status);
+  const sizeText = response.headers.get("content-length");
+  const total = sizeText && /^\\d+$/.test(sizeText) ? Number(sizeText) : null;
+  if (total !== null && total > 40_000_000) throw Error("GitHub archive is too large");
+  let received = 0, lastProgress = 0;
+  await writeProgress("downloading", 0, total);
+  const monitor = new Transform({
+    transform(chunk, _encoding, callback) {
+      received += chunk.length;
+      if (received > 40_000_000) { callback(Error("GitHub archive is too large")); return; }
+      if (Date.now() - lastProgress > 400) {
+        lastProgress = Date.now();
+        writeProgress("downloading", received, total).then(() => callback(null, chunk), callback);
+      } else callback(null, chunk);
+    }
+  });
+  await pipeline(Readable.fromWeb(response.body), monitor, createWriteStream(file, { flags: "wx" }));
+  await writeProgress("downloaded", received, total);
+}
+async function download(sha, file) {
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await assertUpdateDiskSpace();
+      return await downloadOnce(sha, file, attempt);
+    } catch (error) {
+      lastError = error;
+      await rm(file, { force: true }).catch(() => {});
+      if (attempt >= 3 || /too large|disk space/i.test(String(error))) break;
+      console.warn("Download interrupted; retry " + (attempt + 1) + "/3");
+      await writeProgress("retrying");
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+  throw lastError;
 }
 async function extractWindows(zip, destination) {
   const ps = path.join(root, "scripts", "github-extract.ps1");
@@ -197,6 +247,7 @@ export async function confirmGithubUpdate(sha, installRoot = root) {
     throw Error("Pending update confirmation SHA mismatch");
   await rm(path.join(installRoot, ".runtime", "github-updater", "pending.json"));
   await tryHistory("confirmed", sha, installRoot);
+  try { await writeProgress("confirmed"); } catch { /* history remains authoritative */ }
   try { await pruneGithubUpdateBackups(installRoot); }
   catch (error) { console.warn("Backup pruning failed; update remains confirmed:", error); }
 }
@@ -223,6 +274,7 @@ export async function recoverInterruptedUpdate(installRoot = root) {
   await restoreMarkers(record.backup, installRoot);
   await rm(pending, { force: true });
   await tryHistory("rolled_back", typeof record.sha === "string" && SHA.test(record.sha) ? record.sha : null, installRoot);
+  if (installRoot === root) try { await writeProgress("rolled_back"); } catch { /* history remains authoritative */ }
   return true;
 }
 export async function applyGithubUpdate(sha) {
@@ -234,6 +286,7 @@ export async function applyGithubUpdate(sha) {
   const work = path.join(state, "staging-" + randomUUID());
   try {
     await recoverInterruptedUpdate();
+    await writeProgress("starting", 0, null, new Date().toISOString());
     await mkdir(work, { recursive: true });
     const zip = path.join(work, "source.zip");
     const extracted = path.join(work, "extracted");
@@ -241,6 +294,7 @@ export async function applyGithubUpdate(sha) {
     console.log("Downloading pinned GitHub revision", sha);
     await tryHistory("download_started", sha);
     await download(sha, zip);
+    await writeProgress("validating");
     if (process.platform !== "win32") throw Error("GitHub ZIP installer currently supports Windows only");
     await extractWindows(zip, extracted);
     const folders = (await readdir(extracted, { withFileTypes: true })).filter(x => x.isDirectory());
@@ -282,6 +336,7 @@ export async function applyGithubUpdate(sha) {
     }
     await writeFile(pending, JSON.stringify({ sha, backup, names: planned, existed }) + "\n", { flag: "wx", mode: 0o600 });
     swapped = true;
+    await writeProgress("installing");
     for (const name of planned) {
       if (existed[name]) await rename(path.join(root, name), path.join(backup, name));
       await rename(path.join(staged, name), path.join(root, name));
@@ -289,11 +344,13 @@ export async function applyGithubUpdate(sha) {
     await writeFile(path.join(root, ".akariya-version"), sha + "\n");
     await rm(path.join(root, ".akariya-build.json"), { force: true });
     await tryHistory("prepared", sha);
+    await writeProgress("restarting");
     console.log("Update installed; awaiting confirmation from restarted launcher");
     return true;
   } catch (error) {
     console.error("[UPDATE ERROR]", error instanceof Error ? error.message : String(error));
     await tryHistory("failed", sha);
+    await writeProgress("failed");
     if (swapped) {
       await restore(backup, planned, existed);
       await restoreMarkers(backup);

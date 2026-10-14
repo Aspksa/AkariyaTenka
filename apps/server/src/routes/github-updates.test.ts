@@ -33,4 +33,20 @@ describe("GitHub update check", () => {
       expect((await githubUpdateStatus(root, request as typeof fetch)).updateAvailable).toBeNull();
     } finally { await rm(root, { recursive: true, force: true }); }
   });
+  it("returns short GitHub changes and a safe disk capacity indication", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akariya-updates-"));
+    try {
+      await writeFile(path.join(root, ".akariya-version"), A + "\n");
+      const request = async (url: string) => new Response(JSON.stringify(
+        url.includes("/compare/")
+          ? { commits: [{commit:{message:"Fix startup\nMore detail"}}, {commit:{message:"Improve updates"}}] }
+          : { sha: B }
+      ), {status:200});
+      const status = await githubUpdateStatus(root, request as typeof fetch);
+      expect(status.changes).toEqual(["Improve updates", "Fix startup"]);
+      expect(status.freeBytes === null || status.freeBytes >= 0).toBe(true);
+      expect(status.enoughSpace === null || typeof status.enoughSpace === "boolean").toBe(true);
+    } finally { await rm(root,{recursive:true,force:true}); }
+  });
+
 });
