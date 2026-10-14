@@ -10,6 +10,7 @@ export interface HttpRouteSet {
   readonly health: (context: RequestContext) => Promise<string>;
   readonly performance?: (context: RequestContext) => Promise<string>;
   readonly githubUpdates?: () => Promise<string>;
+  readonly githubUpdateHistory?: () => Promise<string>;
   readonly githubUpdateRequest?: (payload: unknown) => Promise<string>;
   readonly githubUpdateShutdown?: () => Promise<void>;
   readonly supervisorShutdown?: () => Promise<void>;
@@ -131,6 +132,11 @@ export function createHttpApplication(
           if (request.method === "GET" && url.pathname === "/api/updates/github" && routes.githubUpdates) {
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
             response.end(await routes.githubUpdates());
+            return;
+          }
+          if (request.method === "GET" && url.pathname === "/api/updates/history" && routes.githubUpdateHistory) {
+            response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+            response.end(await routes.githubUpdateHistory());
             return;
           }
           if (url.pathname.startsWith("/api/")) {
