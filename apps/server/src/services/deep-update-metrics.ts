@@ -127,7 +127,8 @@ async function calculate(root:string):Promise<DeepMetrics>{
   if(prepared>0)successful=Math.round(Math.min(1,confirmed/prepared)*1000)/10;
  }catch{/* no event history */}
  let downloadSpeed:string|null=null,preparation:string|null=null,rollbackTime:string|null=null;
- let hashRate:string|null=null,restartToHealthy:string|null=null;
+ let hashRate:string|null=null,restartToHealthy:string|null=null,actualDowntime:string|null=null,fullRecovery:string|null=null;
+ let lastStopped:number|null=null,lastRollbackStart:number|null=null;
  const preparedAt=new Map<string,number>();
  try {
   const file=path.join(updates,"telemetry.jsonl");
@@ -137,7 +138,15 @@ async function calculate(root:string):Promise<DeepMetrics>{
    for(const line of lines){
     let entry:unknown;try{entry=JSON.parse(line);}catch{continue;}
     if(!entry||typeof entry!=="object")continue;
-    const v=entry as {event?:unknown;bytes?:unknown;durationMs?:unknown;at?:unknown;revision?:unknown};
+    const v=entry as {event?:unknown;bytes?:unknown;durationMs?:unknown;at?:unknown;revision?:unknown;rollback?:unknown};
+    const t=typeof v.at==="string"?Date.parse(v.at):NaN;
+    if(v.event==="backend_stopped"&&Number.isFinite(t))lastStopped=t;
+    if(v.event==="rollback_started"&&Number.isFinite(t))lastRollbackStart=t;
+    if(v.event==="http_recovered"&&Number.isFinite(t)){
+     if(lastStopped!==null&&t>=lastStopped&&t-lastStopped<3600000)actualDowntime=((t-lastStopped)/1000).toFixed(1)+" с";
+     if(v.rollback===true&&lastRollbackStart!==null&&t>=lastRollbackStart&&t-lastRollbackStart<3600000)
+      fullRecovery=((t-lastRollbackStart)/1000).toFixed(1)+" с";
+    }
     if(v.event==="prepared"&&typeof v.revision==="string"&&typeof v.at==="string"){
       const t=Date.parse(v.at);if(Number.isFinite(t))preparedAt.set(v.revision,t);
     }
@@ -211,9 +220,9 @@ async function calculate(root:string):Promise<DeepMetrics>{
    metric("♻️ Повторное использование",null,"Текущий updater скачивает полный архив; доля совпадений не измеряется"),
    metric("🔎 Скорость проверки хешей",hashRate,"Реальная скорость локального SHA-256 архива; не подтверждает подлинность по доверенному эталону"),
    metric("🧪 Время подготовки",preparation,"От старта updater до prepared"),
-   metric("⏸️ Простой при установке",null,"Точное время недоступности HTTP пока не измеряется; перезапуск до health: "+(restartToHealthy??"Нет данных")),
+   metric("⏸️ Простой при установке",actualDowntime,"От остановки backend до подтверждённой доступности HTTP; подготовка до остановки исключена. Время от prepared: "+(restartToHealthy??"Нет данных")),
    metric("✅ Успешность обновлений",successful===null?null:n(successful)+"%","Приблизительно: confirmed/prepared по локальному журналу"),
-   metric("🛟 Время восстановления после rollback",rollbackTime,"Файловый rollback; запуск сервера не включён"),
+   metric("🛟 Время восстановления после rollback",fullRecovery,"От начала файлового отката до доступного HTTP; файловая часть: "+(rollbackTime??"Нет данных")),
    metric("📦 Эффективность дельты",null,"Загрузка полного архива; метрика дельты неприменима"),
    metric("🗄️ Вес резервных копий",n(backupsBytes)+" байт","Объём "+n(backupsCount)+" файлов в локальных backups")
   ]}
