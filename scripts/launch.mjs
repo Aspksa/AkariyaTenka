@@ -335,9 +335,10 @@ async function fail(message) {
     } catch (error) {
       console.error(`[ERROR] Automatic rollback failed: ${error?.message ?? error}`);
     }
+    if (releaseRuntimeLock) await releaseRuntimeLock();
     process.exit(1);
   }
-  finish(1);
+  await finish(1);
 }
 
 function nextCrashState() {
