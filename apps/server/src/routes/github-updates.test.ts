@@ -39,7 +39,7 @@ describe("GitHub update check", () => {
       await writeFile(path.join(root, ".akariya-version"), A + "\n");
       const request = async (url: string) => new Response(JSON.stringify(
         url.includes("/compare/")
-          ? { commits: [{commit:{message:"Fix startup\\nMore detail"}}, {commit:{message:"Improve updates"}}] }
+          ? { commits: [{commit:{message:"Fix startup\nMore detail"}}, {commit:{message:"Improve updates"}}] }
           : { sha: B }
       ), {status:200});
       const status = await githubUpdateStatus(root, request as typeof fetch);
