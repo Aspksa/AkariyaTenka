@@ -94,7 +94,7 @@ async function calculate(root:string):Promise<DeepMetrics>{
    const day=[...days].sort((a,b)=>b[1]-a[1])[0];if(day)bigDay=day[0]+" — +"+n(day[1])+" строк";
    const word=[...wordCounts].sort((a,b)=>b[1]-a[1])[0];if(word)favorite=word[0]+" — "+n(word[1]);
    const commits=await git(rootPath,["log","--all","--format=%h","-n","1500"]);
-   const special=commits.split(/\r?\n/u).filter(s=>/^(?:[a-f])\1{3}/u.test(s));
+   const special=commits.split(/\r?\n/u).filter(s=>/^([a-f])\1{3}/u.test(s));
    magic=special.length?n(special.length)+" хешей с четырьмя одинаковыми начальными символами":"Совпадений не найдено";
    branches=(await git(rootPath,["branch","--list","--all","--format=%(refname)"])).split(/\r?\n/u).filter(Boolean).length;
    const timestamps=await git(rootPath,["log","-1","--format=%ct","--",...files.slice(0,150).map(f=>f.name)]);
