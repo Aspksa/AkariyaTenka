@@ -1,0 +1,81 @@
+name: Akariya GitHub Updater E2E
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-install-and-restart:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Test GitHub update, startup confirmation and protected data
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $archive = Join-Path $env:RUNNER_TEMP "akariya-updater-test.zip"
+          $destination = Join-Path $env:RUNNER_TEMP "Akariya Updater E2E With Spaces"
+          if (Test-Path $destination) { Remove-Item $destination -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          git archive --format=zip HEAD -o $archive
+          if ($LASTEXITCODE -ne 0) { throw "Could not create installed source fixture" }
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
+
+          $headers = @{
+            Accept = "application/vnd.github+json"
+            Authorization = "Bearer $env:GH_TOKEN"
+            "User-Agent" = "AkariyaUpdaterCI"
+          }
+          $commit = Invoke-RestMethod -Uri "https://api.github.com/repos/Aspksa/AkariyaTenka/commits/main" -Headers $headers
+          $sha = [string]$commit.sha
+          if ($sha -notmatch '^[0-9a-f]{40}$') { throw "Invalid GitHub revision" }
+
+          Push-Location $destination
+          try {
+            New-Item -ItemType Directory -Force -Path "data" | Out-Null
+            Set-Content -LiteralPath "data/local-only.json" -Value '{"keep":"my-data"}' -NoNewline
+            Set-Content -LiteralPath ".env" -Value "LOCAL_PRIVATE_VALUE=keep" -NoNewline
+
+            & node "scripts/github-update.mjs" $sha
+            if ($LASTEXITCODE -ne 0) { throw "GitHub update installation failed" }
+            if (-not (Test-Path ".runtime/github-updater/pending.json")) {
+              throw "Installer incorrectly confirmed before real launch"
+            }
+            if ((Get-Content ".akariya-version" -Raw).Trim() -ne $sha) {
+              throw "Installed revision marker mismatch"
+            }
+            if ((Get-Content "data/local-only.json" -Raw) -ne '{"keep":"my-data"}') {
+              throw "Local user data was overwritten"
+            }
+            if ((Get-Content ".env" -Raw) -ne "LOCAL_PRIVATE_VALUE=keep") {
+              throw "Local private configuration was overwritten"
+            }
+
+            $env:AKARIYA_PENDING_UPDATE = $sha
+            $env:AKARIYA_LAUNCHER_SMOKE = "1"
+            & node "scripts/launch.mjs" --no-open --skip-checks --port 4673
+            if ($LASTEXITCODE -ne 0) { throw "Updated version failed normal launcher smoke" }
+            if (Test-Path ".runtime/github-updater/pending.json") {
+              throw "Update was not confirmed after real backend/web startup"
+            }
+            if ((Get-Content ".akariya-version" -Raw).Trim() -ne $sha) {
+              throw "Update version not preserved"
+            }
+            if ((Get-Content "data/local-only.json" -Raw) -ne '{"keep":"my-data"}') {
+              throw "User data changed during restart"
+            }
+          } finally {
+            Pop-Location
+          }
