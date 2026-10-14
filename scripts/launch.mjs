@@ -8,7 +8,7 @@ import { performance } from "node:perf_hooks";
 import { inspectWorkspaceLinks } from "./workspace-health.mjs";
 import { verifyPrebuilt } from "./prebuilt.mjs";
 import { acquireRuntimeLock } from "./runtime-lock.mjs";
-import { recoverInterruptedUpdate } from "./github-update.mjs";
+import { recoverInterruptedUpdate, pendingGithubUpdate, confirmGithubUpdate } from "./github-update.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(script), "..");
@@ -26,6 +26,8 @@ let ending = false;
 let serverReady = false;
 let currentPort;
 let releaseRuntimeLock;
+let pendingUpdateSha;
+let rolledBackBeforeStartup = false;
 
 function parseArgs(argv) {
   const options = { dev: false, noOpen: false, skipChecks: false, port: undefined };
@@ -308,7 +310,7 @@ async function relaunch({ env = {}, noOpen = false, port, delayMs = 0 } = {}) {
   const child = spawn(process.execPath, [script, ...argsForRelaunch({ noOpen, port: port ?? currentPort })], {
     cwd: root,
     stdio: "inherit",
-    env: { ...process.env, ...env },
+    env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== "AKARIYA_PENDING_UPDATE")), ...env },
   });
   children.set(child, "launcher");
   child.once("error", (error) => {
@@ -321,6 +323,21 @@ async function relaunch({ env = {}, noOpen = false, port, delayMs = 0 } = {}) {
 async function fail(message) {
   if (ending) return;
   console.error(`\n\x1b[31m[ERROR] ${message}\x1b[0m`);
+  if (pendingUpdateSha) {
+    ending = true;
+    await stopChildrenGracefully();
+    try {
+      if (await recoverInterruptedUpdate()) {
+        pendingUpdateSha = undefined;
+        warn("Updated version did not start. Previous application restored.");
+        await relaunch({ env: { AKARIYA_REINSTALL: "1" }, noOpen: true, port: currentPort });
+        return;
+      }
+    } catch (error) {
+      console.error("[ERROR] Update rollback failed; manual recovery required:", error);
+    }
+    ending = false;
+  }
   await finish(1);
 }
 
@@ -341,6 +358,7 @@ function nextCrashState() {
 }
 
 async function recoverBackendCrash(message) {
+  if (pendingUpdateSha) { await fail(message); return; }
   const state = nextCrashState();
   if (state.count > MAX_CRASH_RESTARTS) {
     await fail(`${message}. Crash-loop protection stopped automatic restart after ${MAX_CRASH_RESTARTS} attempts.`);
@@ -386,7 +404,11 @@ async function installPendingGithubUpdate() {
     child.once("exit", code => resolve(code ?? 1));
   });
   if (result !== 0) warn("Update failed; previous version will be started.");
-  await relaunch({ noOpen: false, port: currentPort });
+  await relaunch({
+    env: result === 0 ? { AKARIYA_PENDING_UPDATE: sha, AKARIYA_REINSTALL: "1" } : { AKARIYA_REINSTALL: "1" },
+    noOpen: false,
+    port: currentPort
+  });
 }
 
 function spawnManaged(label, command, commandArgs, options = {}) {
@@ -421,16 +443,23 @@ async function main() {
   if (!Number.isInteger(major) || major < 20) throw new Error(`Node.js 20+ is required; found ${process.version}`);
 
   releaseRuntimeLock = await acquireRuntimeLock(root);
-  if (await recoverInterruptedUpdate()) warn("Interrupted update rolled back before startup");
+  const stagedSha = await pendingGithubUpdate();
+  if (stagedSha && process.env.AKARIYA_PENDING_UPDATE === stagedSha) {
+    pendingUpdateSha = stagedSha;
+    step("Confirming updated Akariya " + stagedSha.slice(0, 12) + " after full startup");
+  } else if (await recoverInterruptedUpdate()) {
+    rolledBackBeforeStartup = true;
+    warn("Unconfirmed update was rolled back before startup");
+  }
   const prebuilt = options.dev ? null : await verifyPrebuilt(root);
 
   if (prebuilt !== null) {
     step(`Verified prebuilt release ${prebuilt.sourceSha.slice(0, 12)} (${prebuilt.artifacts.length} artifacts)`);
   } else {
     const forcedReinstall = process.env.AKARIYA_REINSTALL === "1";
-    ensureDependencies({ force: forcedReinstall });
+    ensureDependencies({ force: forcedReinstall || Boolean(pendingUpdateSha) || rolledBackBeforeStartup });
 
-    if (options.skipChecks) {
+    if (options.skipChecks && !pendingUpdateSha) {
       warn("--skip-checks is active: typecheck and tests are intentionally skipped for this launch.");
     } else {
       runQualityChecks();
@@ -466,12 +495,17 @@ async function main() {
   }
 
   const healthy = await waitForHealth(`${backendUrl}api/health`);
-  const webReady = !options.dev || await waitForHttp(openUrl);
+  const webReady = await waitForHttp(openUrl);
   if (!healthy || !webReady) {
     await fail(`Akariya did not become ready within ${STARTUP_TIMEOUT_MS / 1000} seconds.`);
     return;
   }
 
+  if (pendingUpdateSha) {
+    await confirmGithubUpdate(pendingUpdateSha);
+    step("Update confirmed after backend and browser UI health checks");
+    pendingUpdateSha = undefined;
+  }
   serverReady = true;
   const startupMs = Math.round(performance.now() - launcherStartedAt);
   console.log(`\n\x1b[32mAkariya Tenka работает: ${openUrl}\x1b[0m`);

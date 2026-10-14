@@ -18,10 +18,13 @@ and runs the full test/typecheck/build quality gate.
 
 After successful validation, the launcher holds an exclusive instance lock.
 The installer journals a backup, replaces only enumerated application paths,
-writes the new version marker and probes the updated backend over loopback.
-On installation or health-check failure it restores the prior application
-and its version/build metadata. Interrupted operations are rolled back at
-the next launcher start.
+writes the new version marker. It first probes the **staged** backend and
+web interface using staged dependencies. After the swap, the normal launcher
+reinstalls dependencies for the new lockfile, reruns checks and builds, and
+starts the real backend and web UI. The update is only confirmed after that
+real startup succeeds. On build, dependency, startup, or health-check failure,
+the previous application and version/build metadata are restored. Interrupted
+unconfirmed installations are rolled back on the next ordinary launch.
 
 `data/`, `.env`, `.git`, `node_modules/`, `.runtime/`, `keys/`, and
 `.keys/` are never included in the replacement set. The updater does not
@@ -40,3 +43,7 @@ an update or recovery is in progress.
 - GitHub must be reachable, and the staging process requires npm access.
 - The post-install health check verifies the backend. It does not prove all
   external integrations function correctly, so keep backups.
+
+The install button is deliberately unavailable if the currently installed
+revision cannot be established. In that case refresh the installation manually
+once to establish a known starting version.
