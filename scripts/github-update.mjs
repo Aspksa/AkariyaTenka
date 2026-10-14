@@ -143,14 +143,16 @@ export async function applyGithubUpdate(sha) {
     const staged = path.join(extracted, folders[0].name);
     await visit(staged);
     for (const name of ["AKARIYA.bat", "package.json", "package-lock.json", "scripts", "apps", "packages",
-      "scripts/launch.mjs", "scripts/github-update.mjs", "scripts/runtime-lock.mjs",
-      "apps/server/dist/server.mjs", "apps/web/dist/index.html"]) {
+      "scripts/launch.mjs", "scripts/github-update.mjs", "scripts/runtime-lock.mjs"]) {
       if (!await exists(path.join(staged, name))) throw Error("Update is missing " + name);
     }
     console.log("Validating update in isolated folder");
     await run(process.platform === "win32" ? "cmd.exe" : "npm",
       process.platform === "win32" ? ["/d", "/s", "/c", "npm ci --no-audit --no-fund --ignore-scripts && npm run check"] : ["ci"],
       staged);
+    for (const artifact of ["apps/server/dist/server.mjs", "apps/web/dist/index.html"]) {
+      if (!await exists(path.join(staged, artifact))) throw Error("Validated build is missing " + artifact);
+    }
     console.log("Probing staged backend and web without modifying installation");
     await probe(staged);
     backup = path.join(state, "backups", randomUUID());
