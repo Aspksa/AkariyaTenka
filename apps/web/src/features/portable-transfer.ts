@@ -43,6 +43,55 @@ export function mountPortableActions(panel: HTMLElement): void {
   const fresh = el("input") as HTMLInputElement;
   fresh.type = "checkbox"; freshLabel.append(fresh, document.createTextNode(" Новая копия: папка назначения ещё не существует"));
   const output = el("pre"); output.style.whiteSpace = "pre-wrap";
+  const approval=el("input") as HTMLInputElement;
+  approval.type="text";
+  approval.placeholder="Для выполнения введите ПЕРЕНЕСТИ";
+  approval.setAttribute("aria-label","Подтверждение переноса");
+  const execute=el("button","Выполнить через Akariya");
+  execute.type="button";
+  const applyNote=el("p","Встроенный перенос работает только под контролем launcher. Akariya остановится, сохранит данные, выполнит действие и откроется снова. При конфликте перенос будет отклонён.");
+  let currentRoot="";
+  const normalize=(value:string)=>value.trim().replace(/[\\/]+$/,"").replaceAll("/","\\").toLowerCase();
+  execute.addEventListener("click",()=>{
+    const from=source.value.trim(),to=target.value.trim();
+    if(approval.value!=="ПЕРЕНЕСТИ" || !currentRoot) {
+      message.textContent="Укажите подтверждение ПЕРЕНЕСТИ и дождитесь загрузки статуса.";
+      return;
+    }
+    let action: "compare"|"copy"|"sync-to"|"sync-from"|"restore";
+    let other="";
+    const fromCurrent=normalize(from)===normalize(currentRoot);
+    const toCurrent=normalize(to)===normalize(currentRoot);
+    if(fromCurrent===toCurrent){
+      message.textContent="Один из двух путей должен совпадать с папкой запущенной Akariya.";
+      return;
+    }
+    if(selected==="compare"){
+      action="compare";other=fromCurrent?to:from;
+    }else if(selected==="restore"){
+      if(!fromCurrent){message.textContent="Для восстановления исходная папка должна быть текущей установкой.";return;}
+      action="restore";other=to;
+    }else if(selected==="computer" && fresh.checked){
+      if(!fromCurrent){message.textContent="Для новой копии источником должна быть запущенная Akariya.";return;}
+      action="copy";other=to;
+    }else{
+      action=fromCurrent?"sync-to":"sync-from";other=fromCurrent?to:from;
+    }
+    if(!window.confirm("Akariya будет закрыта для безопасного переноса. Продолжить?"))return;
+    execute.disabled=true;
+    message.textContent="Передача запроса launcher…";
+    void fetch("/api/portable/action",{
+      method:"POST",
+      headers:{"content-type":"application/json","x-akariya-action":"portable"},
+      body:JSON.stringify({action,other,confirm:"ПЕРЕНЕСТИ",...(action==="restore"?{backupId:id.value.trim()}:{})})
+    }).then(async response=>{
+      if(!response.ok)throw Error("Сервер отклонил запрос (HTTP "+response.status+").");
+      message.textContent="Запрос принят. Akariya завершает работу и выполнит перенос после остановки. Результат появится после повторного запуска.";
+    }).catch((error:unknown)=>{
+      execute.disabled=false;
+      message.textContent=error instanceof Error?error.message:String(error);
+    });
+  });
   const copy = el("button", "Копировать команду");
   copy.type = "button"; copy.disabled = true;
   let command = "";
@@ -83,11 +132,21 @@ export function mountPortableActions(panel: HTMLElement): void {
     buttons.append(button);
   }
   for (const input of [source,target,id,fresh]) input.addEventListener("input", render);
-  panel.append(heading,notice,status,buttons,instructions,source,target,id,freshLabel,output,copy,message);
+  panel.append(heading,notice,status,buttons,instructions,source,target,id,freshLabel,output,copy,applyNote,approval,execute,message);
   render();
   void fetch("/api/portable/status", { cache: "no-store" })
     .then(async response => { if (!response.ok) throw Error("Статус недоступен"); return response.json() as Promise<Record<string, unknown>>; })
     .then(data => {
+      currentRoot=typeof data.projectRoot==="string"?data.projectRoot:"";
+      if(currentRoot && !source.value)source.value=currentRoot;
+      const previous=data.lastTransfer;
+      if(previous && typeof previous==="object" && "status" in previous){
+        const result=previous as Record<string,unknown>;
+        message.textContent=result.status==="success"
+          ?"Последний перенос завершён успешно."
+          :"Последний перенос не выполнен: "+String(result.error??"неизвестная ошибка");
+      }
+      render();
       status.textContent = "Установка: " + (data.installationId ?? "не настроена") +
         " · Снимок: " + (data.baseline ? "есть" : "нет") +
         " · Синхронизация: " + (data.syncLocked ? "занята" : "свободна");
