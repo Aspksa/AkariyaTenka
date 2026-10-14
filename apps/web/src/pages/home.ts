@@ -32,6 +32,20 @@ export function createHomeView(): HomeView {
 
   const hero = document.createElement("section");
   hero.className = "hero";
+  const brand = document.createElement("div");
+  brand.className = "brand";
+  const symbol = document.createElement("img");
+  symbol.src = "/akariya-fox.svg";
+  symbol.alt = "Эмблема Akariya Tenka — восьмихвостая лиса";
+  symbol.width = 48;
+  symbol.height = 48;
+  brand.append(symbol, textElement("span", "brand-name", "AKARIYA TENKA"));
+  const navbar = document.createElement("header");
+  navbar.className = "topbar";
+  navbar.append(brand, textElement("span", "topbar-label", "PRIVATE AI · CRIMSON EDITION"));
+  const atmosphere = document.createElement("div");
+  atmosphere.className = "atmosphere";
+  atmosphere.setAttribute("aria-hidden", "true");
   const statusRow = document.createElement("div");
   statusRow.className = "status-row";
   statusRow.append(textElement("span", undefined, "Runtime"));
@@ -97,9 +111,10 @@ export function createHomeView(): HomeView {
   });
 
   hero.append(
-    textElement("p", "eyebrow", "FOUNDATION / P0–P2"),
+    atmosphere,
+    textElement("p", "eyebrow", "紅の狐 · THE CRIMSON FOX"),
     textElement("h1", undefined, "Akariya Tenka"),
-    textElement("p", "lead", "A clean, modular foundation designed for long-term growth."),
+    textElement("p", "lead", "Твоя персональная Akariya. Память, защита и управление — в единой системе."),
     statusRow,
     diagnosticsButton,
     diagnostics,
@@ -112,12 +127,13 @@ export function createHomeView(): HomeView {
   const grid = document.createElement("section");
   grid.className = "grid";
   grid.append(
-    card("Boundaries first", "Core, contracts, persistence, security and assistant infrastructure are isolated before product domains arrive."),
-    card("Validated edges", "External data is unknown until a runtime schema accepts it. TypeScript is not treated as runtime validation."),
-    card("Safe side effects", "Capabilities, approval, correlation and audit form the execution path for future tools.")
+    card("Защита", "Ключи, контроль доверия, подтверждения и журнал действий."),
+    card("Память", "Структурированное хранение и сохранность данных Akariya."),
+    card("Управление", "Проверка системы, обновления и безопасный перенос.")
   );
 
-  main.append(hero, grid);
+  const footnote = textElement("p", "footnote", "AKARIYA TENKA  /  BUILT TO ENDURE");
+  main.append(navbar, hero, grid, footnote);
   return {
     element: main,
     update: (state) => badge.update(state)
