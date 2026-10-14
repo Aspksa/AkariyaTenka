@@ -99,13 +99,14 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   const backups = block("update-card", rollbackTitle, rollbackList);
   const history = block("update-card", historyTitle, historyList);
   parent.classList.add("updates-page");
-  parent.append(summary, whatsNew, statistics, block("update-grid", backups, history));
+  parent.append(summary, whatsNew, block("update-grid", backups, history));
   const statistics=document.createElement("section");statistics.className="update-card";
   const statsTitle=document.createElement("h3");statsTitle.textContent="📚 История проекта в цифрах";
   const statsNote=document.createElement("p");statsNote.textContent="Расчёт по истории Git и текущим файлам. Загрузка…";
   const statsGrid=document.createElement("div");statsGrid.className="akariya-git-stat-grid";
   const refreshStats=document.createElement("button");refreshStats.type="button";refreshStats.className="panel-button ghost";refreshStats.textContent="Обновить статистику";
   statistics.append(statsTitle,statsNote,refreshStats,statsGrid);
+  parent.insertBefore(statistics,parent.lastElementChild);
   const displayNumber=(v:number|null|undefined)=>typeof v==="number"?v.toLocaleString("ru-RU"):"Нет данных";
   const showMetric=(symbol:string,title:string,value:string,description:string):void=>{
     const box=document.createElement("article");box.className="akariya-git-stat";
