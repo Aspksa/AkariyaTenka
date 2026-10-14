@@ -139,6 +139,7 @@ export function mountPortableActions(panel: HTMLElement): void {
     .then(data => {
       currentRoot=typeof data.projectRoot==="string"?data.projectRoot:"";
       if(currentRoot && !source.value)source.value=currentRoot;
+      render();
       const previous=data.lastTransfer;
       if(previous && typeof previous==="object" && "status" in previous){
         const result=previous as Record<string,unknown>;
@@ -146,7 +147,6 @@ export function mountPortableActions(panel: HTMLElement): void {
           ?"Последний перенос завершён успешно."
           :"Последний перенос не выполнен: "+String(result.error??"неизвестная ошибка");
       }
-      render();
       status.textContent = "Установка: " + (data.installationId ?? "не настроена") +
         " · Снимок: " + (data.baseline ? "есть" : "нет") +
         " · Синхронизация: " + (data.syncLocked ? "занята" : "свободна");
