@@ -62,6 +62,17 @@ export function createHomeView():HomeView {
  const overview=el("div","overview");
  const pageTitle=el("h2","page-title");
  const notifications=createNotificationCenter(()=>{(tools.children[1] as HTMLButtonElement)?.click();});
+ window.addEventListener("akariya-update-notice",(event:Event)=>{
+  const data=(event as CustomEvent<unknown>).detail;
+  if(!data||typeof data!=="object")return;
+  const n=data as {id?:unknown;kind?:unknown;title?:unknown;detail?:unknown};
+  if(typeof n.id!=="string"|| !/^[a-z0-9:-]{1,100}$/.test(n.id) ||
+    !["update","error","info"].includes(String(n.kind)) ||
+    typeof n.title!=="string"||n.title.length>120 ||
+    typeof n.detail!=="string"||n.detail.length>300)return;
+  notifications.notify({id:n.id,kind:n.kind as "update"|"error"|"info",
+    title:n.title,detail:n.detail});
+ });
  function highlight(active:HTMLButtonElement|null):void {
   // The overview has no heading; section pages show their name in the top bar.
   pageTitle.textContent=active===topLink?"":active?.getAttribute("aria-label")??"";
