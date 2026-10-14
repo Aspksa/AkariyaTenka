@@ -67,6 +67,31 @@ export function createNotificationCenter(openUpdates:()=>void){
  addSetting("showErrors","Показывать ошибки");
  addSetting("showInfo","Показывать информационные");
  addSetting("unreadOnly","Только непрочитанные");
+ addSetting("sound","Звук новых уведомлений");
+ addSetting("doNotDisturb","Не беспокоить — отключить звуки");
+ const choice=(label:string,options:readonly {value:string;title:string}[],current:string,change:(value:string)=>void):void=>{
+  const row=document.createElement("label");row.className="notification-setting";
+  const caption=document.createElement("span");caption.textContent=label;
+  const select=document.createElement("select");select.setAttribute("aria-label",label);
+  for(const option of options){const node=document.createElement("option");node.value=option.value;node.textContent=option.title;select.append(node);}
+  select.value=current;select.addEventListener("change",()=>change(select.value));
+  row.append(caption,select);settingsPanel.append(row);
+ };
+ const persistSettings=():void=>{try{localStorage.setItem(SETTINGS_KEY,JSON.stringify(settings));}catch{/* restricted */}};
+ choice("Приоритет",[
+  {value:"all",title:"Все уведомления"},{value:"important",title:"Важные и критические"},
+  {value:"critical",title:"Только критические"}],settings.minimumPriority,value=>{
+   if(value!=="all"&&value!=="important"&&value!=="critical")return;
+   settings={...settings,minimumPriority:value};persistSettings();draw();
+ });
+ choice("Срок хранения",[
+  {value:"7",title:"7 дней"},{value:"30",title:"30 дней"},
+  {value:"90",title:"90 дней"},{value:"0",title:"Без ограничения по времени"}],
+  String(settings.retentionDays),value=>{
+   const days=Number(value);if(days!==0&&days!==7&&days!==30&&days!==90)return;
+   settings={...settings,retentionDays:days};persistSettings();prune();draw();
+ });
+
  const hint=document.createElement("p");hint.className="notification-empty";
  hint.textContent="Фильтры скрывают записи в списке, но не удаляют события.";
  settingsPanel.append(hint);wrapper.append(settingsPanel);
