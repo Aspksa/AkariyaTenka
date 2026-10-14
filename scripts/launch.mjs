@@ -1,16 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { performance } from "node:perf_hooks";
-import { applyPreparedUpdate, applyRollbackRequest, confirmUpdate, rollbackFailedStart } from "./apply-update.mjs";
 import { inspectWorkspaceLinks } from "./workspace-health.mjs";
 import { verifyPrebuilt } from "./prebuilt.mjs";
-import { assertPortableLaunchAllowed } from "./portable-launch-guard.mjs";
-import { acquirePortableRuntime } from "./portable-runtime-lock.mjs";
-import { PORTABLE_EXIT_CODE, performQueuedPortableAction } from "./portable-supervised.mjs";
+import { acquireRuntimeLock } from "./runtime-lock.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(script), "..");
@@ -26,7 +23,6 @@ const supervisorToken = randomBytes(32).toString("hex");
 const launcherStartedAt = performance.now();
 let ending = false;
 let serverReady = false;
-let updateApplied = false;
 let currentPort;
 let releaseRuntimeLock;
 
@@ -218,7 +214,7 @@ function runQualityChecks() {
   runSync("Typecheck: project references", process.execPath, [tsc, "-b", "packages/core", "packages/contracts", "packages/persistence", "packages/security", "packages/assistant", "apps/server"]);
   runSync("Typecheck: web", process.execPath, [tsc, "-p", "apps/web/tsconfig.json", "--noEmit"]);
   runSync("Typecheck: tests", process.execPath, [tsc, "-p", "tsconfig.tests.json", "--noEmit"]);
-  runSync("Launcher tests", process.execPath, ["--test", "scripts/workspace-health.test.mjs", "scripts/apply-update.test.mjs"]);
+  runSync("Launcher tests", process.execPath, ["--test", "scripts/workspace-health.test.mjs", "scripts/runtime-lock.test.mjs"]);
   runSync("Project tests", process.execPath, [bin("vitest", "vitest.mjs"), "run"]);
 }
 
@@ -324,21 +320,6 @@ async function relaunch({ env = {}, noOpen = false, port, delayMs = 0 } = {}) {
 async function fail(message) {
   if (ending) return;
   console.error(`\n\x1b[31m[ERROR] ${message}\x1b[0m`);
-  if (updateApplied && !serverReady) {
-    ending = true;
-    await stopChildrenGracefully();
-    try {
-      if (await rollbackFailedStart(root, message)) {
-        warn("The new version did not start. The previous installation was restored and will be started again.");
-        await relaunch({ env: { AKARIYA_REINSTALL: "1" }, noOpen: true, port: currentPort });
-        return;
-      }
-    } catch (error) {
-      console.error(`[ERROR] Automatic rollback failed: ${error?.message ?? error}`);
-    }
-    if (releaseRuntimeLock) await releaseRuntimeLock();
-    process.exit(1);
-  }
   await finish(1);
 }
 
@@ -359,11 +340,6 @@ function nextCrashState() {
 }
 
 async function recoverBackendCrash(message) {
-  if (updateApplied && !serverReady) {
-    await fail(message);
-    return;
-  }
-
   const state = nextCrashState();
   if (state.count > MAX_CRASH_RESTARTS) {
     await fail(`${message}. Crash-loop protection stopped automatic restart after ${MAX_CRASH_RESTARTS} attempts.`);
@@ -383,20 +359,6 @@ async function recoverBackendCrash(message) {
   });
 }
 
-async function runQueuedPortableTransfer() {
-  ending = true;
-  await stopChildrenGracefully();
-  if (releaseRuntimeLock) { await releaseRuntimeLock(); releaseRuntimeLock = undefined; }
-  try {
-    const result = await performQueuedPortableAction(root, supervisorToken);
-    if (result.status === "success") step("Portable action finished and verified");
-    else warn("Portable action refused or failed: " + result.error);
-  } catch (error) {
-    warn("Portable action failed before execution: " + (error instanceof Error ? error.message : String(error)));
-  }
-  await relaunch({ noOpen: false, port: currentPort });
-}
-
 function spawnManaged(label, command, commandArgs, options = {}) {
   const child = spawn(command, commandArgs, {
     cwd: options.cwd ?? root,
@@ -409,11 +371,6 @@ function spawnManaged(label, command, commandArgs, options = {}) {
   child.once("exit", (code, signal) => {
     children.delete(child);
     if (ending) return;
-    if (label === "backend" && code === PORTABLE_EXIT_CODE) {
-      step("Portable transfer requested; server has exited");
-      void runQueuedPortableTransfer();
-      return;
-    }
     if (label === "backend" && code === RESTART_CODE) {
       step("Restart requested by Akariya");
       void relaunch({ noOpen: true, port: currentPort });
@@ -430,53 +387,18 @@ function spawnManaged(label, command, commandArgs, options = {}) {
   return child;
 }
 
-function quarantinePreparedUpdate() {
-  const ready = path.join(root, ".updates", "ready.json");
-  if (!existsSync(ready)) return;
-  try { renameSync(ready, path.join(root, ".updates", `ready.failed-${Date.now()}.json`)); } catch { /* diagnostics only */ }
-}
-
-async function prepareInstallation() {
-  let touched = false;
-
-  if (await rollbackFailedStart(root, "Previous update was not confirmed by a healthy startup")) {
-    touched = true;
-    warn("An unconfirmed update was rolled back before startup.");
-  }
-
-  if (await applyRollbackRequest(root)) {
-    touched = true;
-    step("Manual rollback applied");
-  }
-
-  try {
-    if (await applyPreparedUpdate(root)) {
-      touched = true;
-      updateApplied = true;
-      step("Prepared update installed; startup health confirmation is pending");
-    }
-  } catch (error) {
-    quarantinePreparedUpdate();
-    warn(`Prepared update was rejected or rolled back: ${error?.message ?? error}. Starting the current installation.`);
-  }
-
-  return touched;
-}
-
 async function main() {
   const major = Number(process.versions.node.split(".")[0]);
   if (!Number.isInteger(major) || major < 20) throw new Error(`Node.js 20+ is required; found ${process.version}`);
 
-  await assertPortableLaunchAllowed(root);
-  releaseRuntimeLock = await acquirePortableRuntime(root);
-  const touched = await prepareInstallation();
+  releaseRuntimeLock = await acquireRuntimeLock(root);
   const prebuilt = options.dev ? null : await verifyPrebuilt(root);
 
   if (prebuilt !== null) {
     step(`Verified prebuilt release ${prebuilt.sourceSha.slice(0, 12)} (${prebuilt.artifacts.length} artifacts)`);
   } else {
     const forcedReinstall = process.env.AKARIYA_REINSTALL === "1";
-    ensureDependencies({ force: forcedReinstall || touched });
+    ensureDependencies({ force: forcedReinstall });
 
     if (options.skipChecks) {
       warn("--skip-checks is active: typecheck and tests are intentionally skipped for this launch.");
@@ -487,7 +409,6 @@ async function main() {
     runBuilds();
   }
 
-  await assertPortableLaunchAllowed(root);
   const backendPort = await findPort(requestedPort);
   currentPort = backendPort;
   const backendUrl = `http://127.0.0.1:${backendPort}/`;
@@ -522,7 +443,6 @@ async function main() {
   }
 
   serverReady = true;
-  if (updateApplied) await confirmUpdate(root);
   const startupMs = Math.round(performance.now() - launcherStartedAt);
   console.log(`\n\x1b[32mAkariya Tenka работает: ${openUrl}\x1b[0m`);
   console.log(`Startup: ${startupMs} ms${prebuilt === null ? " (source mode)" : " (verified prebuilt)"}`);
