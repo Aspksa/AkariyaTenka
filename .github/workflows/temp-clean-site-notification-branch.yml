@@ -1,0 +1,23 @@
+name: Temporary cleanup site notification branch
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/temp-clean-site-notification-branch.yml']
+permissions:
+  contents: write
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete merged notification branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          test "$(gh api "repos/$repo/pulls/76" --jq '.merged')" = "true"
+          branch="feat/site-update-notifications"
+          if gh api "repos/$repo/branches/$branch" >/dev/null 2>&1; then
+            gh api -X DELETE "repos/$repo/git/refs/heads/$branch"
+          fi
+          ! gh api "repos/$repo/branches/$branch" >/dev/null 2>&1
