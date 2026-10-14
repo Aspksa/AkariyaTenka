@@ -1,0 +1,23 @@
+name: Temporary cleanup Git history metrics branch
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/temp-clean-git-history-metrics.yml']
+permissions:
+  contents: write
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete merged metrics branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          test "$(gh api "repos/$repo/pulls/78" --jq '.merged')" = "true"
+          branch="feat/update-git-history-metrics"
+          if gh api "repos/$repo/branches/$branch" >/dev/null 2>&1; then
+            gh api -X DELETE "repos/$repo/git/refs/heads/$branch"
+          fi
+          ! gh api "repos/$repo/branches/$branch" >/dev/null 2>&1
