@@ -4,7 +4,7 @@ export interface Notice { id:string;kind:NoticeKind;title:string;detail:string;a
 const KEY="akariya-notifications-v1";
 const SETTINGS_KEY="akariya-notification-settings-v1";
 export interface NoticeSettings {showUpdates:boolean;showErrors:boolean;showInfo:boolean;unreadOnly:boolean;sound:boolean;doNotDisturb:boolean;minimumPriority:"all"|"important"|"critical";retentionDays:7|30|90|0;density:"compact"|"expanded";opacity:70|85|100;fontScale:90|100|115}
-const defaults:NoticeSettings={showUpdates:true,showErrors:true,showInfo:true,unreadOnly:false,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30};
+const defaults:NoticeSettings={showUpdates:true,showErrors:true,showInfo:true,unreadOnly:false,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30,density:"expanded",opacity:100,fontScale:100};
 export function parseNoticeSettings(input:unknown):NoticeSettings {
  if(!input||typeof input!=="object"||Array.isArray(input))return {...defaults};
  const v=input as Record<string,unknown>;
@@ -16,7 +16,10 @@ export function parseNoticeSettings(input:unknown):NoticeSettings {
   sound:typeof v.sound==="boolean"?v.sound:false,
   doNotDisturb:typeof v.doNotDisturb==="boolean"?v.doNotDisturb:false,
   minimumPriority:v.minimumPriority==="important"||v.minimumPriority==="critical"?v.minimumPriority:"all",
-  retentionDays:v.retentionDays===7||v.retentionDays===90||v.retentionDays===0?v.retentionDays:30
+  retentionDays:v.retentionDays===7||v.retentionDays===90||v.retentionDays===0?v.retentionDays:30,
+  density:v.density==="compact"?"compact":"expanded",
+  opacity:v.opacity===70||v.opacity===85?v.opacity:100,
+  fontScale:v.fontScale===90||v.fontScale===115?v.fontScale:100
  };
 }
 
