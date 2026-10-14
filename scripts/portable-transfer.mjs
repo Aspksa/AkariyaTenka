@@ -3,7 +3,7 @@ import { mkdir, readdir, lstat, readFile, copyFile, rename, rm, stat } from "nod
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const OMIT = new Set(["node_modules", ".git", ".portable-transfer.lock"]);
+const OMIT = new Set(["node_modules", ".git", ".portable-transfer.lock", ".portable-state"]);
 const PRIVATE_SUBTREES = new Set(["keys/private", "keys/secrets", ".keys/private", ".keys/secrets"]);
 const FORBIDDEN = new Set(["publisher-private.pem", "AKARIYA_RELEASE_SIGNING_KEY_PEM"]);
 function nested(parent, child) {
