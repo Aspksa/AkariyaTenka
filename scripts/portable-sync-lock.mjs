@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile, lstat } from "node:fs/promises";
 import path from "node:path";
 import { realpath } from "node:fs/promises";
+import { refuseActiveRuntime } from "./portable-runtime-lock.mjs";
 
 const LOCK_NAME = "sync.lock";
 export async function withPortableSyncLocks(roots, task) {
@@ -23,6 +24,7 @@ export async function withPortableSyncLocks(roots, task) {
         if (error.code === "EEXIST") throw Error("Portable synchronization already locked: " + root);
         throw error;
       }
+      await refuseActiveRuntime(root);
       const nonce = randomUUID();
       acquired.push({lock, nonce, owned: false});
       await writeFile(path.join(lock, "owner.json"),
@@ -30,6 +32,7 @@ export async function withPortableSyncLocks(roots, task) {
         { flag: "wx", mode: 0o600 });
       acquired[acquired.length - 1].owned = true;
     }
+    for (const root of resolved) await refuseActiveRuntime(root);
     return await task();
   } finally {
     for (const {lock,nonce,owned} of acquired.reverse()) {
