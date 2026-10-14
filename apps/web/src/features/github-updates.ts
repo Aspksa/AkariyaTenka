@@ -33,7 +33,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   progressBar.max = 100; progressBar.hidden = true;
   progressBar.setAttribute("aria-label", "Загрузка обновления");
   const report = document.createElement("p");
-  parent.append(button, message, details, link, whatsNew, changesList.parentElement === whatsNew ? space : space,
+  parent.append(button, message, details, link, whatsNew, space,
     install, later, progressBar, report, historyTitle, historyList);
   const snoozeKey = "akariya-update-snooze";
   function snoozed(sha: string): boolean {
@@ -46,6 +46,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
     if (!approvedSha) return;
     localStorage.setItem(snoozeKey, JSON.stringify({sha: approvedSha, until: Date.now() + 24 * 60 * 60 * 1000}));
     later.hidden = true;
+    window.dispatchEvent(new Event("akariya-update-snooze"));
     message.textContent = "Обновление отложено до завтра. Вы можете установить его в любой момент.";
   });
   const historyLabels: Record<string, string> = {
