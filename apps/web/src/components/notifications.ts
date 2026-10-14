@@ -4,12 +4,15 @@ export interface Notice { id:string;kind:NoticeKind;title:string;detail:string;a
 const KEY="akariya-notifications-v1";
 export function parseNotices(value:unknown):Notice[] {
  if(!Array.isArray(value)) return [];
- return value.filter((x):x is Notice=>!!x&&typeof x==="object"&&
+ const entries=value.filter((x):x is Notice=>!!x&&typeof x==="object"&&
   typeof x.id==="string"&&/^[a-z0-9:-]{1,100}$/.test(x.id)&&
   ["update","error","info"].includes(x.kind)&&
   typeof x.title==="string"&&x.title.length<=120&&
   typeof x.detail==="string"&&x.detail.length<=300&&
-  typeof x.at==="number"&&Number.isFinite(x.at)&&typeof x.read==="boolean").slice(-30);
+  typeof x.at==="number"&&Number.isFinite(x.at)&&typeof x.read==="boolean");
+ const unique=new Map<string,Notice>();
+ for(const item of entries)unique.set(item.id,item);
+ return [...unique.values()].slice(-30);
 }
 export function createNotificationCenter(openUpdates:()=>void){
  const wrapper=document.createElement("div");wrapper.className="notification-center";
@@ -61,6 +64,11 @@ export function createNotificationCenter(openUpdates:()=>void){
    if(old && old.title===item.title && old.detail===item.detail)return;
    notices=[...notices.filter(n=>n.id!==item.id),{...item,at:item.at??Date.now(),read:false}].slice(-30);
    save();draw();
+  },
+  dismiss(prefix:string){
+   const previous=notices.length;
+   notices=notices.filter(n=>!n.id.startsWith(prefix));
+   if(previous!==notices.length){save();draw();}
   }
  };
 }
