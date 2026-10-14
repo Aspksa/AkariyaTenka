@@ -38,7 +38,8 @@ export function mountGithubUpdates(parent: HTMLElement): void {
       const state = await response.json() as UpdateStatus;
       if (!/^[a-f0-9]{40}$/i.test(state.latest)) throw new Error("Некорректная версия GitHub");
       approvedSha = state.latest;
-      install.hidden = state.updateAvailable === false;
+      install.hidden = state.updateAvailable !== true;
+      install.disabled = false;
       message.textContent = state.updateAvailable === true
         ? "Доступны изменения проекта на GitHub."
         : state.updateAvailable === false
