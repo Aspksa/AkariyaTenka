@@ -15,6 +15,7 @@ import { createHealthRoute } from "./routes/health.js";
 import { createPerformanceRoute } from "./routes/performance.js";
 import { createGithubUpdateRoute } from "./routes/github-updates.js";
 import { gitHistoryMetrics } from "./services/git-history-metrics.js";
+import { deepUpdateMetrics } from "./services/deep-update-metrics.js";
 import { createGithubUpdateHistoryRoute } from "./routes/github-update-history.js";
 import { createGithubUpdateRequest } from "./routes/github-update-request.js";
 import { createRollbackRoutes } from "./routes/github-rollback.js";
@@ -123,6 +124,7 @@ async function main(): Promise<void> {
       performance: createPerformanceRoute(modules.metrics),
       githubUpdates: createGithubUpdateRoute(process.cwd()),
       gitStatistics: async () => JSON.stringify(await gitHistoryMetrics(process.cwd())),
+      deepStatistics: async () => JSON.stringify(await deepUpdateMetrics(process.cwd())),
       githubUpdateHistory: createGithubUpdateHistoryRoute(process.cwd()),
       rollbackList: rollback.list,
       rollbackRequest: rollback.request,
