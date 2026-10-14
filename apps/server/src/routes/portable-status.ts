@@ -18,7 +18,12 @@ export async function createPortableStatusRoute(root: string): Promise<string> {
     exists("keys/public/publisher-public.pem"),
     exists("keys/private/signing-vault.enc")
   ]);
-  return JSON.stringify({installationId, baseline, runtimeLocked:runtime, syncLocked:sync,
+  let lastTransfer: unknown = null;
+  try {
+    const raw = await readFile(path.join(root, ".portable-state", "last-transfer.json"), "utf8");
+    if (raw.length < 16384) lastTransfer = JSON.parse(raw);
+  } catch { /* no previous transfer result */ }
+  return JSON.stringify({projectRoot:path.resolve(root),installationId, baseline, runtimeLocked:runtime, syncLocked:sync, lastTransfer,
     publicKeyPresent:publicKey, encryptedVaultPresent:privateVault,
     requiresShutdownForTransfer:true, automaticMergeAvailable:false});
 }
