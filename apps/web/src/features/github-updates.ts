@@ -34,6 +34,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
         action.addEventListener("click", () => {
           if (!confirm("Вернуть предыдущую версию Akariya? Текущие файлы приложения будут сохранены в резервной копии. Пользовательские данные останутся на месте.")) return;
           action.disabled = true;
+          const startedAt = Date.now();
           message.textContent = "Восстановление начато. Akariya перезапустится…";
           void fetch("/api/updates/rollback", {
             method:"POST",
@@ -41,7 +42,8 @@ export function mountGithubUpdates(parent: HTMLElement): void {
             body:JSON.stringify({id:backup.id})
           }).then(response => {
             if (!response.ok) throw Error("Не удалось начать восстановление: HTTP " + response.status);
-            message.textContent = "Ожидается перезапуск предыдущей версии. Проверьте окно AKARIYA.bat.";
+            message.textContent = "Ожидается перезапуск предыдущей версии…";
+            void watchInstall(backup.revision, startedAt);
           }).catch(error => {message.textContent = String(error); action.disabled = false;});
         });
         rollbackList.append(action);
