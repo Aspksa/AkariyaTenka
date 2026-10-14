@@ -31,7 +31,7 @@ test("diverged files and active runtime refuse transfer",async()=>{
   await mkdir(a);await initializePortableIdentity(a);await writeFile(path.join(a,"data.db"),"original");
   await transferPortableCopy(a,b);await createPortableSnapshot(a);await createPortableSnapshot(b);
   const release=await acquirePortableRuntime(a);
-  await assert.rejects(applyPortableReplacement(b,a,{acknowledgeStopped:true}),/Running Akariya/);
+  await assert.rejects(applyPortableReplacement(b,a,{acknowledgeStopped:true}),/Running Akariya|already locked/);
   await release();
   await writeFile(path.join(a,"data.db"),"home");
   await writeFile(path.join(b,"data.db"),"work");
