@@ -8,7 +8,7 @@ import { snapshotPortableFiles } from "./portable-transfer.mjs";
 import { assertSamePortableInstallation } from "./portable-identity.mjs";
 import { backupPortableState, verifyPortableBackup } from "./portable-backup.mjs";
 
-const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+const same=(a,b)=>JSON.stringify(Object.entries(a).sort())===JSON.stringify(Object.entries(b).sort());
 function disjoint(a,b) {const r=path.relative(a,b),q=path.relative(b,a);
  const inside=s=>s===""||(s!==".."&&!s.startsWith(".."+path.sep)&&!path.isAbsolute(s));
  if(inside(r)||inside(q)) throw Error("Overlapping roots");}
@@ -68,7 +68,7 @@ export async function applyPortableReplacement(from,to,{acknowledgeStopped=false
      }
      const expected={...plan.target};
      for(const n of [...plan.replace,...plan.add])expected[n]=plan.source[n];
-     if(!same(await snapshotPortableFiles(to),Object.fromEntries(Object.entries(expected).sort(([a],[b])=>a.localeCompare(b)))))
+     if(!same(await snapshotPortableFiles(to),expected))
        throw Error("Final checksum verification failed");
      await writeFile(path.join(directory,"success.json"),JSON.stringify({backupId:backup.backupId,changed:applied.length})+"\n");
      return {changed:applied.length,backupId:backup.backupId,verified:true};
