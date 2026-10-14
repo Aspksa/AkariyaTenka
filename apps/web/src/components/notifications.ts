@@ -98,11 +98,32 @@ export function createNotificationCenter(openUpdates:()=>void){
 
  try{notices=parseNotices(JSON.parse(localStorage.getItem(KEY)??"[]"));}catch{/* storage unavailable */}
  function save(){try{localStorage.setItem(KEY,JSON.stringify(notices));}catch{/* no persistent storage */}}
+ function prune():void{
+  if(settings.retentionDays===0)return;
+  const cutoff=Date.now()-settings.retentionDays*86400000;
+  const kept=notices.filter(n=>n.at>=cutoff);
+  if(kept.length!==notices.length){notices=kept;save();}
+ }
+ let audio:AudioContext|null=null;
+ function sound():void{
+  if(!settings.sound||settings.doNotDisturb||document.visibilityState!=="visible")return;
+  try{
+   audio??=new AudioContext();
+   if(audio.state!=="running")return;
+   const osc=audio.createOscillator(),gain=audio.createGain();
+   osc.type="sine";osc.frequency.value=660;
+   gain.gain.setValueAtTime(0.025,audio.currentTime);
+   gain.gain.exponentialRampToValueAtTime(0.001,audio.currentTime+0.13);
+   osc.connect(gain);gain.connect(audio.destination);
+   osc.start();osc.stop(audio.currentTime+0.13);
+  }catch{/* Audio may be blocked */}
+ }
  function draw(){
   const unread=notices.filter(x=>!x.read).length;count.hidden=unread===0;count.textContent=String(unread);
   toggle.setAttribute("aria-label",unread?"Уведомления, непрочитанных: "+unread:"Уведомления");
   items.replaceChildren();
   const visible=notices.filter(n=>(!settings.unreadOnly||!n.read)&&
+   (settings.minimumPriority==="all"||n.kind==="error"||(settings.minimumPriority==="important"&&n.kind==="update"))&&
    (n.kind==="update"?settings.showUpdates:n.kind==="error"?settings.showErrors:settings.showInfo));
   for(const item of [...visible].reverse()){
    const row=document.createElement("article");row.className="notification-item"+(item.read?"":" unread");
@@ -130,14 +151,15 @@ export function createNotificationCenter(openUpdates:()=>void){
  clear.addEventListener("click",()=>{notices=[];save();draw();});
  wrapper.addEventListener("keydown",event=>{if(event.key==="Escape"){close();toggle.focus();}});
  document.addEventListener("pointerdown",event=>{if(!wrapper.contains(event.target as Node))close();});
- draw();
+ prune();draw();
  return {
   element:wrapper,
   notify(item:Omit<Notice,"read"|"at">&{at?:number}){
    const old=notices.find(n=>n.id===item.id);
    if(old && old.title===item.title && old.detail===item.detail)return;
    notices=[...notices.filter(n=>n.id!==item.id),{...item,at:item.at??Date.now(),read:false}].slice(-30);
-   save();draw();
+   prune();save();draw();
+   if(!old)sound();
   },
   dismiss(prefix:string){
    const previous=notices.length;
