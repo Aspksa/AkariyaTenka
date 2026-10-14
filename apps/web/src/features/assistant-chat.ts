@@ -17,11 +17,13 @@ export function mountAssistantAvatar(): void {
  const heading=document.createElement("h3");heading.textContent="Настройки · Мозг ИИ";
  const status=document.createElement("p");status.textContent="Проверка подключения…";
  const memory=document.createElement("p");memory.textContent="Память: локальное хранение разговоров";
+ const rememberHint=document.createElement("p");rememberHint.textContent="Долговременная память: напишите «Запомни: ...» в чате. Обычные сообщения не сохраняются как факты автоматически.";
  const hint=document.createElement("p");hint.textContent="Cloud.ru: настройте AKARIYA_CLOUDRU_API_KEY и при необходимости AKARIYA_CLOUDRU_MODEL в окружении запуска. Ключ никогда не вводится в браузере.";
- settings.append(heading,status,memory,hint);
+ settings.append(heading,status,memory,rememberHint,hint);
  chat.append(header,log,settings,form);
  document.body.append(avatar,chat);
  let sessionId:string|undefined;
+ try {const id=localStorage.getItem("akariya-ai-session-id");if(id && /^[A-Za-z0-9_-]{8,128}$/.test(id))sessionId=id;}catch{/* Storage can be disabled. */}
  function append(role:string,value:string):void {
    const node=document.createElement("p");node.className="akariya-ai-msg "+role;
    node.textContent=value;log.append(node);log.scrollTop=log.scrollHeight;
@@ -43,7 +45,7 @@ export function mountAssistantAvatar(): void {
      body:JSON.stringify({text,...(sessionId?{sessionId}:{})})
    });const body=await response.json() as {status?:string;sessionId?:string;text?:string;error?:{message?:string}};
    if(!response.ok)throw Error(body.error?.message??"HTTP "+response.status);
-   if(body.sessionId)sessionId=body.sessionId;
+   if(body.sessionId){sessionId=body.sessionId;try{localStorage.setItem("akariya-ai-session-id",sessionId);}catch{/* Session continues in memory. */}}
    append("assistant",body.text??"Ответ модели пока недоступен");
    }catch(error){append("error",error instanceof Error?error.message:String(error));}
    finally{send.disabled=false;input.focus();}})();
