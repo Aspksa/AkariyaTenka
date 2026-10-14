@@ -13,7 +13,11 @@ describe("notification persistence",()=>{
   expect(parseNotices([first,newest])).toEqual([newest]);
  });
  it("validates notification preferences with safe defaults",()=>{
-  expect(parseNoticeSettings(null)).toEqual({showUpdates:true,showErrors:true,showInfo:true,unreadOnly:false});
-  expect(parseNoticeSettings({showUpdates:false,showErrors:"no",unreadOnly:true})).toEqual({showUpdates:false,showErrors:true,showInfo:true,unreadOnly:true});
+  expect(parseNoticeSettings(null)).toEqual({showUpdates:true,showErrors:true,showInfo:true,unreadOnly:false,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30});
+  expect(parseNoticeSettings({showUpdates:false,showErrors:"no",unreadOnly:true,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30})).toEqual({showUpdates:false,showErrors:true,showInfo:true,unreadOnly:true,sound:false,doNotDisturb:false,minimumPriority:"all",retentionDays:30});
+ });
+ it("validates advanced notification settings",()=>{
+  expect(parseNoticeSettings({sound:true,doNotDisturb:true,minimumPriority:"critical",retentionDays:7})).toMatchObject({sound:true,doNotDisturb:true,minimumPriority:"critical",retentionDays:7});
+  expect(parseNoticeSettings({sound:"yes",minimumPriority:"invalid",retentionDays:-1})).toMatchObject({sound:false,minimumPriority:"all",retentionDays:30});
  });
 });
