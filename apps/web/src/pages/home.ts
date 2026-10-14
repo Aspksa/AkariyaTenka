@@ -148,6 +148,52 @@ export function createHomeView():HomeView {
  mastRight.append(notifications.element);
  mast.append(mastBrand,mastTitle,mastRight);
 
+ // Only the global bell owns notification state. Recover update results after a page reload.
+ async function reconcileUpdateOutcome():Promise<void>{
+  const key="akariya-pending-update-v1";
+  let pending:{sha:string;startedAt:number;operation:"install"|"rollback"}|null=null;
+  try{
+   const value=JSON.parse(localStorage.getItem(key)??"null") as unknown;
+   if(value&&typeof value==="object"){
+    const v=value as {sha?:unknown;startedAt?:unknown;operation?:unknown};
+    if(typeof v.sha==="string" && /^[a-f0-9]{40}$/i.test(v.sha) &&
+      typeof v.startedAt==="number" && Number.isFinite(v.startedAt) &&
+      (v.operation==="install"||v.operation==="rollback"))
+     pending={sha:v.sha.toLowerCase(),startedAt:v.startedAt,operation:v.operation};
+   }
+  }catch{return;}
+  if(!pending)return;
+  if(Date.now()-pending.startedAt>24*60*60*1000||pending.startedAt>Date.now()+60_000){
+   try{localStorage.removeItem(key);}catch{/* No storage */}return;
+  }
+  try{
+   const res=await fetch("/api/updates/history",{cache:"no-store",signal:AbortSignal.timeout(5000)});
+   if(!res.ok)return;
+   const data=await res.json() as {events?:{at:string;event:string;revision:string|null}[]};
+   const eligible=(Array.isArray(data.events)?data.events:[]).filter(e=>
+    e && e.revision===pending.sha && typeof e.at==="string" &&
+    Number.isFinite(Date.parse(e.at)) && Date.parse(e.at)>=pending.startedAt-2000 &&
+    ["confirmed","rolled_back","failed"].includes(e.event)
+   ).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
+   const result=eligible[0]?.event;
+   if(!result)return;
+   if(result==="confirmed"){
+    notifications.dismiss("update:"+pending.sha);
+    notifications.dismiss("update:started:"+pending.sha);
+    notifications.notify({id:"update:confirmed:"+pending.sha,kind:"info",
+      title:"Обновление завершено",detail:"Версия "+pending.sha.slice(0,12)+" успешно установлена."});
+   }else{
+    notifications.dismiss("update:started:"+pending.sha);
+    notifications.notify({id:"update:"+result+":"+pending.sha,kind:"error",
+      title:result==="rolled_back"?"Предыдущая версия восстановлена":"Ошибка обновления",
+      detail:"Операция завершилась без установки версии "+pending.sha.slice(0,12)+"."});
+   }
+   try{localStorage.removeItem(key);}catch{/* No storage */}
+  }catch{/* Backend may still be restarting */}
+ }
+ void reconcileUpdateOutcome();
+ window.setInterval(()=>{if(document.visibilityState==="visible")void reconcileUpdateOutcome();},15000);
+
  // Watch for updates in the background and surface them through the notification bell.
  async function checkForUpdates():Promise<void> {
   if(document.visibilityState!=="visible")return;
@@ -163,6 +209,8 @@ export function createHomeView():HomeView {
    if(data.updateAvailable===true&&!deferred&&typeof data.latest==="string"&&/^[0-9a-f]{40}$/i.test(data.latest))
     notifications.notify({id:"update:"+data.latest,kind:"update",title:"Доступно обновление",
       detail:"Новая версия Akariya "+data.latest.slice(0,12)+" готова к установке."});
+   if(data.updateAvailable===false&&typeof data.latest==="string"&&/^[0-9a-f]{40}$/i.test(data.latest))
+    notifications.dismiss("update:"+data.latest);
   } catch {/* GitHub may be temporarily offline; never interrupt the page */}
  }
  void checkForUpdates();
