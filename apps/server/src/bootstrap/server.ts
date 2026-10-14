@@ -15,6 +15,7 @@ export interface HttpRouteSet {
   readonly performance?: (context: RequestContext) => Promise<string>;
   readonly githubUpdates?: () => Promise<string>;
   readonly gitStatistics?: () => Promise<string>;
+  readonly deepStatistics?: () => Promise<string>;
   readonly githubUpdateHistory?: () => Promise<string>;
   readonly rollbackList?: () => Promise<string>;
   readonly rollbackRequest?: (payload: unknown) => Promise<string>;
@@ -183,6 +184,11 @@ export function createHttpApplication(
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
             response.end(await routes.performance(context));
             return;
+          }
+          if (request.method === "GET" && url.pathname === "/api/updates/statistics/deep" && routes.deepStatistics) {
+            const result=await routes.deepStatistics();
+            response.writeHead(200,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
+            response.end(result);return;
           }
           if (request.method === "GET" && url.pathname === "/api/updates/statistics" && routes.gitStatistics) {
             const result = await routes.gitStatistics();
