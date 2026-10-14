@@ -162,7 +162,7 @@ export function createNotificationCenter(openUpdates:()=>void){
   for(const item of [...visible].reverse()){
    const row=document.createElement("article");row.className="notification-item notification-priority-"+item.kind+(item.read?"":" unread");
    const symbol=document.createElement("span");symbol.className="notification-event-icon";symbol.setAttribute("aria-hidden","true");
-   symbol.append(createIcon(item.kind==="error"?"alert-triangle":item.kind==="update"?"download":"info"));
+   symbol.append(createIcon(item.kind==="error"?"alert":item.kind==="update"?"refresh":"info"));
    const body=document.createElement("div");body.className="notification-event-body";row.append(symbol,body);
    const header=document.createElement("strong");header.textContent=item.title;
    const text=document.createElement("p");text.textContent=item.detail;
