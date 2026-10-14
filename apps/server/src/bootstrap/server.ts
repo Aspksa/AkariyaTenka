@@ -11,6 +11,8 @@ export interface HttpRouteSet {
   readonly performance?: (context: RequestContext) => Promise<string>;
   readonly githubUpdates?: () => Promise<string>;
   readonly githubUpdateHistory?: () => Promise<string>;
+  readonly rollbackList?: () => Promise<string>;
+  readonly rollbackRequest?: (payload: unknown) => Promise<string>;
   readonly githubUpdateRequest?: (payload: unknown) => Promise<string>;
   readonly githubUpdateShutdown?: () => Promise<void>;
   readonly supervisorShutdown?: () => Promise<void>;
@@ -86,14 +88,14 @@ export function createHttpApplication(
           return;
         }
 
-        if (request.method === "POST" && url.pathname === "/api/updates/install") {
+        if (request.method === "POST" && (url.pathname === "/api/updates/install" || url.pathname === "/api/updates/rollback")) {
           const host = "127.0.0.1:" + config.port;
           const peer = request.socket.remoteAddress;
           if (!config.supervised || config.host !== "127.0.0.1" ||
               !config.supervisorToken || !routes.githubUpdateRequest || !routes.githubUpdateShutdown ||
               (peer !== "127.0.0.1" && peer !== "::1" && peer !== "::ffff:127.0.0.1") ||
               request.headers.host !== host || request.headers.origin !== "http://" + host ||
-              request.headers["x-akariya-action"] !== "github-install" ||
+              request.headers["x-akariya-action"] !== (url.pathname === "/api/updates/rollback" ? "github-rollback" : "github-install") ||
               request.headers["content-type"]?.split(";")[0]?.trim() !== "application/json") {
             throw new AppError({ code: "PERMISSION", message: "Local update approval required", correlationId: id });
           }
@@ -108,7 +110,10 @@ export function createHttpApplication(
           let payload: unknown;
           try { payload = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
           catch { throw new AppError({ code: "VALIDATION", message: "Invalid JSON", correlationId: id }); }
-          const result = await routes.githubUpdateRequest(payload);
+          const result = url.pathname === "/api/updates/rollback"
+            ? await routes.rollbackRequest?.(payload)
+            : await routes.githubUpdateRequest(payload);
+          if (result === undefined) throw new AppError({code:"PERMISSION",message:"Rollback unavailable",correlationId:id});
           response.writeHead(202, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
           response.end(result);
           setImmediate(() => { void routes.githubUpdateShutdown?.(); });
@@ -132,6 +137,11 @@ export function createHttpApplication(
           if (request.method === "GET" && url.pathname === "/api/updates/github" && routes.githubUpdates) {
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
             response.end(await routes.githubUpdates());
+            return;
+          }
+          if (request.method === "GET" && url.pathname === "/api/updates/backups" && routes.rollbackList) {
+            response.writeHead(200, {"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
+            response.end(await routes.rollbackList());
             return;
           }
           if (request.method === "GET" && url.pathname === "/api/updates/history" && routes.githubUpdateHistory) {
