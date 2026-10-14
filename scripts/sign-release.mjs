@@ -1,5 +1,7 @@
 import { createPrivateKey, sign } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { canonicalReleasePayload } from "./release-trust.mjs";
 
 // Explicit release-publishing utility. Keep signing keys outside the source tree.
@@ -14,7 +16,7 @@ export async function signReleaseManifest({ manifestPath, signaturePath, private
   return signaturePath;
 }
 
-if (process.argv[1] && import.meta.url === new URL("file://" + process.argv[1]).href) {
+if (process.argv[1] && path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1])) {
   const [manifestPath, signaturePath] = process.argv.slice(2);
   if (!manifestPath || !signaturePath) {
     console.error("Usage: node scripts/sign-release.mjs manifest.json signature.sig");
