@@ -6,7 +6,12 @@ a link to compare changes.
 
 ## Installing updates (Windows)
 
-Click **Обновления GitHub → Установить обновление** and approve the confirmation.
+Open **Обновления GitHub** and click **Установить обновление** once.
+The button itself is the explicit installation request: there is no second
+confirmation dialog and no Git/terminal action required. The panel shows the
+installation stage, waits for the application to restart and automatically
+reloads the page after the new version is confirmed. If the update fails,
+Akariya reports the failure and retains its recovery safeguards.
 The local server records the exact 40-character SHA fetched from the official
 GitHub API, shuts down cleanly and hands control to the launcher.
 
