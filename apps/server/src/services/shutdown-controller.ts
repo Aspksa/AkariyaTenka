@@ -41,7 +41,7 @@ export class ShutdownController {
 
   private async run(requestedCode: number, reason: string): Promise<ShutdownResult> {
     this.logger.info("shutdown requested", { reason, requestedCode });
-    const forcedCode = requestedCode === 0 ? 1 : requestedCode;
+    const forcedCode = requestedCode === 0 || requestedCode === 76 ? 1 : requestedCode;
     const timer = setTimeout(() => {
       this.logger.error("shutdown timeout exceeded", { reason, timeoutMs: this.timeoutMs });
       this.runtime.forceExit(forcedCode);
