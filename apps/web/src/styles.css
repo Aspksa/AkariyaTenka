@@ -209,3 +209,10 @@ button{cursor:pointer}
 .akariya-ai-form textarea{flex:1;min-width:0;background:#28242a;color:#fff;border:1px solid #645159;border-radius:9px;padding:9px;resize:vertical}
 .akariya-ai-settings{position:absolute;right:0;top:53px;bottom:70px;width:min(300px,85%);background:#252027;border-left:1px solid #86604f;padding:18px;z-index:2;overflow:auto;box-shadow:-12px 0 35px #0008}
 @media(max-width:540px){.akariya-ai-avatar{right:12px;bottom:12px}.akariya-ai-chat{right:8px;bottom:85px}}
+
+.akariya-ai-brain-controls{display:flex;flex-direction:column;gap:9px;margin-top:16px}
+.akariya-ai-brain-controls label{display:flex;flex-direction:column;gap:5px;font-size:12px}
+.akariya-ai-brain-controls input,.akariya-ai-brain-controls select{width:100%;min-width:0;background:#19151b;border:1px solid #74545a;color:#f5eded;border-radius:8px;padding:8px;font:inherit}
+.akariya-ai-brain-controls button{border:1px solid #85525a;background:#53242e;color:#fff;border-radius:8px;padding:9px;cursor:pointer}
+.akariya-ai-brain-controls button:disabled{opacity:.55;cursor:wait}
+.akariya-ai-brain-controls [role=status]{overflow-wrap:anywhere;font-size:12px}
