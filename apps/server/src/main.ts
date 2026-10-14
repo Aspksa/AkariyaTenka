@@ -104,7 +104,7 @@ async function main(): Promise<void> {
         if (data.settings !== undefined) {
           const candidate = data.settings as Partial<BrainSettings> | null;
           if (!candidate || typeof candidate.model !== "string" ||
-              !/^[\\w./-]{2,150}$/.test(candidate.model) ||
+              !/^[\w./-]{2,150}$/.test(candidate.model) ||
               typeof candidate.temperature !== "number" || !Number.isFinite(candidate.temperature) ||
               candidate.temperature < 0 || candidate.temperature > 2 ||
               typeof candidate.topP !== "number" || !Number.isFinite(candidate.topP) ||
