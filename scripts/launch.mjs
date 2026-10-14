@@ -8,6 +8,7 @@ import { performance } from "node:perf_hooks";
 import { applyPreparedUpdate, applyRollbackRequest, confirmUpdate, rollbackFailedStart } from "./apply-update.mjs";
 import { inspectWorkspaceLinks } from "./workspace-health.mjs";
 import { verifyPrebuilt } from "./prebuilt.mjs";
+import { assertPortableLaunchAllowed } from "./portable-launch-guard.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(script), "..");
@@ -441,6 +442,7 @@ async function main() {
   const major = Number(process.versions.node.split(".")[0]);
   if (!Number.isInteger(major) || major < 20) throw new Error(`Node.js 20+ is required; found ${process.version}`);
 
+  await assertPortableLaunchAllowed(root);
   const touched = await prepareInstallation();
   const prebuilt = options.dev ? null : await verifyPrebuilt(root);
 
@@ -459,6 +461,7 @@ async function main() {
     runBuilds();
   }
 
+  await assertPortableLaunchAllowed(root);
   const backendPort = await findPort(requestedPort);
   currentPort = backendPort;
   const backendUrl = `http://127.0.0.1:${backendPort}/`;
