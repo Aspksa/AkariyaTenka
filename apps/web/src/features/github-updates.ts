@@ -223,6 +223,8 @@ export function mountGithubUpdates(parent: HTMLElement): void {
           // refresh so the user reviews and approves the revision that is current now.
           installing = false;
           install.textContent = "Установить обновление";
+          button.disabled = false;
+          install.disabled = false;
           await check();
           if (approvedSha !== sha && !install.hidden)
             message.textContent = "На GitHub появилась более новая версия " + approvedSha?.slice(0, 12) +
@@ -230,12 +232,16 @@ export function mountGithubUpdates(parent: HTMLElement): void {
           return;
         }
         if (!response.ok) {
-          throw new Error("Установка отклонена (HTTP " + response.status + ")");
+          const payload = await response.json().catch(() => null) as {error?: {message?: string}} | null;
+          throw new Error("Установка отклонена: " + (payload?.error?.message ?? "HTTP " + response.status));
         }
       } catch (error) {
         // The backend intentionally shuts down after accepting the request.
         // A dropped HTTP connection does not necessarily mean installation failed.
-        if (!(error instanceof TypeError)) {
+        if (error instanceof TypeError) {
+          message.textContent = "Соединение потеряно. Проверяю, был ли принят запрос на обновление…";
+          // A transport failure alone does not confirm acceptance; the progress watcher checks the server journal.
+        } else {
           message.textContent = error instanceof Error ? error.message : String(error);
           installing = false;
           button.disabled = false;
