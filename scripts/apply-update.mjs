@@ -23,6 +23,7 @@ const PROTECTED_SEGMENTS = new Set([
   ".runtime",
   "node_modules",
   ".akariya-version",
+  "keys",
   ".secrets",
   "secrets",
 ]);
