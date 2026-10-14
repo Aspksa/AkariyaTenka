@@ -5,6 +5,7 @@ describe("notification persistence",()=>{
   const valid={id:"update:123",kind:"update",title:"New version",detail:"Ready",at:100,read:false};
   expect(parseNotices([valid,{...valid,kind:"script"},{...valid,title:"x".repeat(200)},null])).toEqual([valid]);
   expect(parseNotices({})).toEqual([]);
+  expect(parseNotices([{...valid,archived:true},{...valid,archived:"bad"}])).toEqual([{...valid,archived:true}]);
  });
  it("deduplicates persisted notices by stable event id",()=>{
   const first={id:"update:abc",kind:"update",title:"Available",detail:"Ready",at:100,read:false};
