@@ -1,4 +1,4 @@
-import { getUpdateStatus } from "../api/updates.js";
+import { getUpdateStatus, checkReleases } from "../api/updates.js";
 
 export function mountUpdates(container: HTMLElement): void {
   const title = document.createElement("h2");
@@ -9,6 +9,32 @@ export function mountUpdates(container: HTMLElement): void {
   const check = document.createElement("button");
   check.type = "button";
   check.textContent = "Проверить состояние";
+  const releaseCheck = document.createElement("button");
+  releaseCheck.type = "button";
+  releaseCheck.textContent = "Проверить новые версии";
+  const releaseInfo = document.createElement("p");
+  releaseInfo.setAttribute("role", "status");
+  releaseInfo.textContent = "Новые релизы ещё не проверялись.";
+  releaseCheck.addEventListener("click", () => {
+    releaseCheck.disabled = true;
+    releaseInfo.textContent = "Проверяю GitHub Releases…";
+    void checkReleases().then((result) => {
+      releaseInfo.replaceChildren();
+      const message = document.createElement("span");
+      message.textContent = result.latestTag ? "Последний релиз: " + result.latestTag + ". " + result.message : result.message;
+      releaseInfo.append(message);
+      if (result.releaseUrl) {
+        const link = document.createElement("a");
+        link.href = result.releaseUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "Открыть релиз на GitHub";
+        releaseInfo.append(" ", link);
+      }
+    }).catch((error: unknown) => {
+      releaseInfo.textContent = error instanceof Error ? error.message : "Ошибка проверки обновлений";
+    }).finally(() => { releaseCheck.disabled = false; });
+  });
   const install = document.createElement("button");
   install.type = "button";
   install.textContent = "Установить и перезапустить";
@@ -32,6 +58,6 @@ export function mountUpdates(container: HTMLElement): void {
     }
   }
   check.addEventListener("click", () => { void refresh(); });
-  container.append(title, state, check, install);
+  container.append(title, state, check, releaseCheck, releaseInfo, install);
   void refresh();
 }
