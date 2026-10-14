@@ -47,3 +47,23 @@ export async function checkReleases(): Promise<ReleaseCheck> {
   }
   return data as unknown as ReleaseCheck;
 }
+
+export interface VerifiedReleaseStatus {
+  verified: boolean;
+  latestTag: string | null;
+  installationEnabled: false;
+  status: "verified" | "failed" | "not_configured";
+  message: string;
+}
+export async function verifyReleaseSignature(): Promise<VerifiedReleaseStatus> {
+  const response = await fetch("/api/updates/verify", { cache: "no-store" });
+  if (!response.ok) throw new Error("Проверка подписи недоступна.");
+  const value: unknown = await response.json();
+  if (!value || typeof value !== "object") throw new Error("Неверный формат ответа");
+  const data = value as Record<string, unknown>;
+  if (typeof data.verified !== "boolean" || data.installationEnabled !== false ||
+      !(data.latestTag === null || typeof data.latestTag === "string") ||
+      !["verified","failed","not_configured"].includes(String(data.status)) ||
+      typeof data.message !== "string") throw new Error("Неверный статус подписи");
+  return data as unknown as VerifiedReleaseStatus;
+}

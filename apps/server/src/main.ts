@@ -12,6 +12,7 @@ import { createHealthRoute } from "./routes/health.js";
 import { createPerformanceRoute } from "./routes/performance.js";
 import { createUpdateStatusRoute } from "./routes/update-status.js";
 import { createUpdateCheckRoute } from "./routes/update-check.js";
+import { createVerifiedUpdateRoute } from "./routes/update-verify.js";
 import { HealthService } from "./services/health-service.js";
 import { ShutdownController } from "./services/shutdown-controller.js";
 
@@ -50,6 +51,7 @@ async function main(): Promise<void> {
       performance: createPerformanceRoute(modules.metrics),
       updateStatus: createUpdateStatusRoute(process.cwd()),
       updateCheck: createUpdateCheckRoute(process.cwd()),
+      updateVerify: createVerifiedUpdateRoute(),
       supervisorShutdown: async () => { requestSupervisorShutdown?.(); }
     },
     logger,

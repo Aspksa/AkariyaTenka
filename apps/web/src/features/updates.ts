@@ -1,4 +1,4 @@
-import { getUpdateStatus, checkReleases } from "../api/updates.js";
+import { getUpdateStatus, checkReleases, verifyReleaseSignature } from "../api/updates.js";
 
 export function mountUpdates(container: HTMLElement): void {
   const title = document.createElement("h2");
@@ -35,6 +35,22 @@ export function mountUpdates(container: HTMLElement): void {
       releaseInfo.textContent = error instanceof Error ? error.message : "Ошибка проверки обновлений";
     }).finally(() => { releaseCheck.disabled = false; });
   });
+  const verifyButton = document.createElement("button");
+  verifyButton.type = "button";
+  verifyButton.textContent = "Проверить цифровую подпись";
+  const verifyInfo = document.createElement("p");
+  verifyInfo.setAttribute("role", "status");
+  verifyInfo.textContent = "Подпись ещё не проверялась.";
+  verifyButton.addEventListener("click", () => {
+    verifyButton.disabled = true;
+    verifyInfo.textContent = "Проверяю подпись издателя…";
+    void verifyReleaseSignature()
+      .then(result => { verifyInfo.textContent = result.message; })
+      .catch((error: unknown) => {
+        verifyInfo.textContent = error instanceof Error ? error.message : "Ошибка проверки подписи";
+      })
+      .finally(() => { verifyButton.disabled = false; });
+  });
   const install = document.createElement("button");
   install.type = "button";
   install.textContent = "Установить и перезапустить";
@@ -58,6 +74,6 @@ export function mountUpdates(container: HTMLElement): void {
     }
   }
   check.addEventListener("click", () => { void refresh(); });
-  container.append(title, state, check, releaseCheck, releaseInfo, install);
+  container.append(title, state, check, releaseCheck, releaseInfo, verifyButton, verifyInfo, install);
   void refresh();
 }
