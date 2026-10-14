@@ -291,3 +291,10 @@ button{cursor:pointer}
  .akariya-git-stat-animated{animation:none;transition:none}
  .akariya-git-stat-animated::before{opacity:.35}
 }
+
+/* Icon-only GitHub Updates entry beside the single notification bell. */
+.mast-right .updates-topbar-toggle{flex:0 0 40px}
+.mast-right .updates-topbar-toggle:hover,.mast-right .updates-topbar-toggle.active{
+ background:var(--surface-2);color:var(--text);border-color:var(--accent-line)
+}
+.mast-right .updates-topbar-toggle svg{width:19px;height:19px}
