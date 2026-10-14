@@ -1,7 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, writeFile, rm, rename, lstat, readdir, copyFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm, rename, lstat, readdir } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -77,22 +77,24 @@ async function probe() {
     }
   }
 }
-async function restore(backup, names) {
+async function restore(backup, names, existed) {
   for (const name of [...names].reverse()) {
     const destination = path.join(root, name);
-    await rm(destination, { recursive: true, force: true });
-    if (await exists(path.join(backup, name))) await rename(path.join(backup, name), destination);
+    if (await exists(path.join(backup, name))) {
+      await rm(destination, { recursive: true, force: true });
+      await rename(path.join(backup, name), destination);
+    } else if (existed[name] === false) await rm(destination, { recursive: true, force: true });
   }
 }
 export async function recoverInterruptedUpdate() {
   const pending = path.join(state, "pending.json");
   if (!await exists(pending)) return false;
   const record = JSON.parse(await readFile(pending, "utf8"));
-  if (!record || !Array.isArray(record.names) || !record.names.every(n => allowed.includes(n)) ||
+  if (!record || !Array.isArray(record.names) || !record.names.every(n => allowed.includes(n)) || !record.existed || typeof record.existed !== "object" ||
       typeof record.backup !== "string" || !record.backup.startsWith(path.join(state, "backups") + path.sep)) {
     throw Error("Update recovery metadata invalid; manual inspection required");
   }
-  await restore(record.backup, record.names);
+  await restore(record.backup, record.names, record.existed);
   await rm(pending, { force: true });
   return true;
 }
@@ -100,7 +102,7 @@ export async function applyGithubUpdate(sha) {
   if (!SHA.test(sha)) throw Error("Invalid pinned GitHub commit SHA");
   await mkdir(state, { recursive: true });
   const unlock = await acquireRuntimeLock(root);
-  let swapped = false, moved = [], backup;
+  let swapped = false, backup, planned = [], existed = {};
   const work = path.join(state, "staging-" + randomUUID());
   try {
     await recoverInterruptedUpdate();
@@ -125,17 +127,17 @@ export async function applyGithubUpdate(sha) {
       staged);
     backup = path.join(state, "backups", randomUUID());
     await mkdir(backup, { recursive: true });
-    const names = allowed.filter(n => /* Don't overwrite absent source paths. */ true);
     const pending = path.join(state, "pending.json");
-    // Journal is written before any destination is renamed. Recovery only
-    // includes the completed moves, avoiding removal of untouched paths.
-    await writeFile(pending, JSON.stringify({ backup, names: moved }) + "\n", { flag: "wx", mode: 0o600 });
+    for (const name of allowed) {
+      if (await exists(path.join(staged, name))) {
+        planned.push(name);
+        existed[name] = await exists(path.join(root, name));
+      }
+    }
+    await writeFile(pending, JSON.stringify({ backup, names: planned, existed }) + "\n", { flag: "wx", mode: 0o600 });
     swapped = true;
-    for (const name of names) {
-      if (!await exists(path.join(staged, name))) continue;
-      if (await exists(path.join(root, name))) await rename(path.join(root, name), path.join(backup, name));
-      moved.push(name);
-      await writeFile(pending, JSON.stringify({ backup, names: moved }) + "\n");
+    for (const name of planned) {
+      if (existed[name]) await rename(path.join(root, name), path.join(backup, name));
       await rename(path.join(staged, name), path.join(root, name));
     }
     await writeFile(path.join(root, ".akariya-version"), sha + "\n");
@@ -148,7 +150,7 @@ export async function applyGithubUpdate(sha) {
   } catch (error) {
     console.error("[UPDATE ERROR]", error instanceof Error ? error.message : String(error));
     if (swapped) {
-      await restore(backup, moved);
+      await restore(backup, planned, existed);
       await rm(path.join(state, "pending.json"), { force: true });
       console.error("Previous application files restored");
     }
