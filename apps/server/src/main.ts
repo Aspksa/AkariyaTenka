@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   const logger = new Logger("akariya", config.logLevel, undefined, createSecretRedactor(process.env), clock, requestContext);
   const storage = await createStorage(config);
   const security = createSecurity(storage.audit, clock, process.env);
-  createAssistant(security.policy, security.approvals, storage.audit, clock, storage.assistant);
+  const assistant = createAssistant(security.policy, security.approvals, storage.audit, clock, storage.assistant);
   const modules = createModules(clock, requestContext);
   await modules.kernel.start();
 
@@ -51,6 +51,13 @@ async function main(): Promise<void> {
     config,
     {
       health: createHealthRoute(health),
+      assistantStatus: async () => JSON.stringify({configured: Boolean(process.env.AKARIYA_AI_API_KEY && process.env.AKARIYA_AI_MODEL), model: process.env.AKARIYA_AI_MODEL ?? null, memory: true}),
+      assistantTurn: async (payload, context) => {
+        const input = payload as {text?:unknown;sessionId?:unknown};
+        if (!input || typeof input.text !== "string" || input.text.length > 8000 || (input.sessionId !== undefined && typeof input.sessionId !== "string"))
+          throw new Error("Invalid assistant input");
+        return JSON.stringify(await assistant.runtime.runTurn({text:input.text,...(typeof input.sessionId === "string" ? {sessionId:input.sessionId} : {})},context));
+      },
       performance: createPerformanceRoute(modules.metrics),
       githubUpdates: createGithubUpdateRoute(process.cwd()),
       githubUpdateHistory: createGithubUpdateHistoryRoute(process.cwd()),
