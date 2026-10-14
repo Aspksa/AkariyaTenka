@@ -5,6 +5,9 @@ type UpdateStatus = {
   changes?: string[]; freeBytes?: number | null; enoughSpace?: boolean | null;
 };
 export function mountGithubUpdates(parent: HTMLElement): void {
+ const notify=(id:string,kind:"update"|"error"|"info",title:string,detail:string):void=>{
+  window.dispatchEvent(new CustomEvent("akariya-update-notice",{detail:{id,kind,title,detail}}));
+ };
   const message = document.createElement("p");
   const button = document.createElement("button");
   button.type = "button"; button.textContent = "Проверить обновления";
@@ -36,6 +39,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
           action.disabled = true;
           const startedAt = Date.now();
           message.textContent = "Восстановление начато. Akariya перезапустится…";
+          notify("rollback:started","info","Запрошен откат","Akariya готовится восстановить предыдущую версию.");
           void fetch("/api/updates/rollback", {
             method:"POST",
             headers:{"content-type":"application/json","x-akariya-action":"github-rollback"},
@@ -44,7 +48,8 @@ export function mountGithubUpdates(parent: HTMLElement): void {
             if (!response.ok) throw Error("Не удалось начать восстановление: HTTP " + response.status);
             message.textContent = "Ожидается перезапуск предыдущей версии…";
             void watchInstall(backup.revision, startedAt);
-          }).catch(error => {message.textContent = String(error); action.disabled = false;});
+          }).catch(error => {message.textContent = String(error); action.disabled = false;
+            notify("rollback:error","error","Откат не запущен",String(error).slice(0,250));});
         });
         rollbackList.append(action);
       }
@@ -159,6 +164,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
             " · Установка " + Math.max(1, Math.ceil((Date.now() - startedAt) / 1000)) +
             " с · Проверка запуска пройдена";
           message.textContent = "Akariya успешно обновлена. Открываю новую версию…";
+          notify("update:success:"+sha,"info","Обновление завершено","Новая версия "+sha.slice(0,12)+" успешно установлена.");
           window.location.reload();
           return;
         }
@@ -169,6 +175,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
           message.textContent = outcome === "rolled_back"
             ? "Обновление не удалось. Предыдущая версия восстановлена."
             : "Обновление не установлено. Проверьте журнал обновлений.";
+          notify("update:failed:"+sha,"error","Обновление не установлено",(message.textContent??"Проверьте историю обновлений.").slice(0,250));
           installing = false;
           button.disabled = false;
           install.disabled = false;
