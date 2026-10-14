@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, writeFile, rm, rename, lstat, readdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm, rename, lstat, readdir, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -86,6 +86,13 @@ async function restore(backup, names, existed) {
     } else if (existed[name] === false) await rm(destination, { recursive: true, force: true });
   }
 }
+async function restoreMarkers(backup) {
+  for (const marker of [".akariya-version", ".akariya-build.json"]) {
+    const old = path.join(backup, marker);
+    await rm(path.join(root, marker), { force: true });
+    if (await exists(old)) await copyFile(old, path.join(root, marker));
+  }
+}
 export async function recoverInterruptedUpdate() {
   const pending = path.join(state, "pending.json");
   if (!await exists(pending)) return false;
@@ -95,6 +102,7 @@ export async function recoverInterruptedUpdate() {
     throw Error("Update recovery metadata invalid; manual inspection required");
   }
   await restore(record.backup, record.names, record.existed);
+  await restoreMarkers(record.backup);
   await rm(pending, { force: true });
   return true;
 }
@@ -128,6 +136,11 @@ export async function applyGithubUpdate(sha) {
     backup = path.join(state, "backups", randomUUID());
     await mkdir(backup, { recursive: true });
     const pending = path.join(state, "pending.json");
+    // Preserve installation metadata as well as application code.
+    for (const marker of [".akariya-version", ".akariya-build.json"]) {
+      if (await exists(path.join(root, marker)))
+        await copyFile(path.join(root, marker), path.join(backup, marker));
+    }
     for (const name of allowed) {
       if (await exists(path.join(staged, name))) {
         planned.push(name);
@@ -151,6 +164,7 @@ export async function applyGithubUpdate(sha) {
     console.error("[UPDATE ERROR]", error instanceof Error ? error.message : String(error));
     if (swapped) {
       await restore(backup, planned, existed);
+      await restoreMarkers(backup);
       await rm(path.join(state, "pending.json"), { force: true });
       console.error("Previous application files restored");
     }
