@@ -126,10 +126,41 @@ export async function pendingGithubUpdate(installRoot = root) {
   if (!record || typeof record.sha !== "string" || !SHA.test(record.sha)) return null;
   return record.sha;
 }
+export async function pruneGithubUpdateBackups(installRoot = root, retain = 3) {
+  if (!Number.isSafeInteger(retain) || retain < 1) throw Error("Invalid backup retention");
+  const directory = path.join(installRoot, ".runtime", "github-updater", "backups");
+  if (!await exists(directory)) return [];
+  await verifyUpdateFilesystem(installRoot);
+  await assertOrdinaryDirectory(directory);
+  const candidates = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(entry.name)) continue;
+    const folder = path.join(directory, entry.name);
+    const info = await lstat(folder);
+    if (!info.isDirectory() || info.isSymbolicLink()) continue;
+    const marker = path.join(folder, ".akariya-backup.json");
+    if (!await exists(marker)) continue; // Never prune unrecognized legacy/user folders.
+    const markerInfo = await lstat(marker);
+    if (!markerInfo.isFile() || markerInfo.isSymbolicLink()) continue;
+    let record;
+    try { record = JSON.parse(await readFile(marker, "utf8")); } catch { continue; }
+    if (record?.kind !== "akariya-github-backup" || record?.schemaVersion !== 1) continue;
+    candidates.push({ folder, modified: info.mtimeMs });
+  }
+  candidates.sort((a, b) => b.modified - a.modified || b.folder.localeCompare(a.folder));
+  const removed = [];
+  for (const candidate of candidates.slice(retain)) {
+    await rm(candidate.folder, { recursive: true, force: false });
+    removed.push(path.basename(candidate.folder));
+  }
+  return removed;
+}
 export async function confirmGithubUpdate(sha, installRoot = root) {
   if (!SHA.test(sha) || await pendingGithubUpdate(installRoot) !== sha)
     throw Error("Pending update confirmation SHA mismatch");
   await rm(path.join(installRoot, ".runtime", "github-updater", "pending.json"));
+  try { await pruneGithubUpdateBackups(installRoot); }
+  catch (error) { console.warn("Backup pruning failed; update remains confirmed:", error); }
 }
 export async function recoverInterruptedUpdate(installRoot = root) {
   const recoverState = path.join(installRoot, ".runtime", "github-updater");
@@ -184,6 +215,9 @@ export async function applyGithubUpdate(sha) {
     await probe(staged);
     backup = path.join(state, "backups", randomUUID());
     await mkdir(backup, { recursive: true });
+    await writeFile(path.join(backup, ".akariya-backup.json"), JSON.stringify({
+      kind: "akariya-github-backup", schemaVersion: 1, previousVersion: "local", targetSha: sha
+    }) + "\n", { flag: "wx", mode: 0o600 });
     await verifyUpdateFilesystem(root);
     const pending = path.join(state, "pending.json");
     // Preserve installation metadata as well as application code.
