@@ -23,7 +23,7 @@ async function files(root, dir = root, list = []) {
   }
   return list.sort();
 }
-async function manifest(root) {
+export async function snapshotPortableFiles(root) {
   const result = {};
   for (const name of await files(root)) {
     const bytes = await readFile(path.join(root, ...name.split("/")));
@@ -34,9 +34,9 @@ async function manifest(root) {
 export async function inspectPortableCopy(source, target) {
   const from = path.resolve(source), to = path.resolve(target);
   if (nested(from, to) || nested(to, from)) throw Error("Source and destination must not overlap");
-  const src = await manifest(from);
+  const src = await snapshotPortableFiles(from);
   let dst = null;
-  try { await stat(to); dst = await manifest(to); }
+  try { await stat(to); dst = await snapshotPortableFiles(to); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
   const sourceOnly = [], targetOnly = [], changed = [];
   if (dst) {
@@ -55,7 +55,7 @@ export async function transferPortableCopy(source, target) {
   if (nested(from, to) || nested(to, from)) throw Error("Source and destination must not overlap");
   const existing = await stat(to).then(() => true).catch(e => { if (e.code === "ENOENT") return false; throw e; });
   if (existing) throw Error("Destination already exists. Refusing to overwrite: compare first and resolve conflicts.");
-  const expected = await manifest(from);
+  const expected = await snapshotPortableFiles(from);
   const stage = path.join(path.dirname(to), "." + path.basename(to) + ".stage-" + randomUUID());
   await mkdir(stage, { recursive: false });
   try {
@@ -65,7 +65,7 @@ export async function transferPortableCopy(source, target) {
       await mkdir(path.dirname(output), { recursive: true });
       await copyFile(path.join(from, ...relative), output);
     }
-    const actual = await manifest(stage);
+    const actual = await snapshotPortableFiles(stage);
     if (JSON.stringify(actual) !== JSON.stringify(expected)) throw Error("Transfer verification failed: source changed or destination corrupted");
     await rename(stage, to);
     return { transferred: Object.keys(expected).length, verified: true, destination: to };
