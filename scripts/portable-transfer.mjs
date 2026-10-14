@@ -23,7 +23,7 @@ async function files(root, dir = root, list = []) {
   }
   return list.sort();
 }
-async function manifest(root) {
+export async function snapshotPortableFiles(root) {
   const result = {};
   for (const name of await files(root)) {
     const bytes = await readFile(path.join(root, ...name.split("/")));
@@ -34,7 +34,7 @@ async function manifest(root) {
 export async function inspectPortableCopy(source, target) {
   const from = path.resolve(source), to = path.resolve(target);
   if (nested(from, to) || nested(to, from)) throw Error("Source and destination must not overlap");
-  const src = await manifest(from);
+  const src = await snapshotPortableFiles(from);
   let dst = null;
   try { await stat(to); dst = await manifest(to); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
