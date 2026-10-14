@@ -1,0 +1,23 @@
+name: Temporary PR 57 cleanup
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/cleanup-updater-e2e-branch.yml"
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const pr = await github.rest.pulls.get({owner: context.repo.owner, repo: context.repo.repo, pull_number: 57});
+            if (!pr.data.merged || pr.data.base.ref !== 'main' ||
+                pr.data.head.ref !== 'test/windows-github-updater-e2e' ||
+                pr.data.head.sha !== '4ab7f54997c37e2738e9325164e5ef20c708b8fd') {
+              core.setFailed('Unexpected PR state; deletion refused'); return;
+            }
+            await github.rest.git.deleteRef({owner: context.repo.owner, repo: context.repo.repo, ref: 'heads/test/windows-github-updater-e2e'});
