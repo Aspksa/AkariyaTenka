@@ -103,6 +103,18 @@ async function probe(candidateRoot) {
   }
 }
 async function restore(backup, names, existed, installRoot = root) {
+  // Validate all referenced paths before restoring any file.
+  for (const name of names) {
+    const original = path.join(backup, name);
+    const destination = path.join(installRoot, name);
+    if (existed[name] === true && !await exists(original) && !await exists(destination))
+      throw Error("Missing original and backup for " + name + "; manual recovery required");
+    if (await exists(original)) {
+      const info = await lstat(original);
+      if (info.isSymbolicLink() || (!info.isDirectory() && !info.isFile()))
+        throw Error("Unsafe backup entry: " + name);
+    }
+  }
   for (const name of [...names].reverse()) {
     const destination = path.join(installRoot, name);
     if (await exists(path.join(backup, name))) {
@@ -122,6 +134,9 @@ export async function pendingGithubUpdate(installRoot = root) {
   const pending = path.join(installRoot, ".runtime", "github-updater", "pending.json");
   if (!await exists(pending)) return null;
   await verifyUpdateFilesystem(installRoot);
+  const pendingInfo = await lstat(pending);
+  if (!pendingInfo.isFile() || pendingInfo.isSymbolicLink())
+    throw Error("Unsafe update recovery journal");
   const record = JSON.parse(await readFile(pending, "utf8"));
   if (!record || typeof record.sha !== "string" || !SHA.test(record.sha)) return null;
   return record.sha;
@@ -168,8 +183,15 @@ export async function recoverInterruptedUpdate(installRoot = root) {
   if (!await exists(pending)) return false;
   await verifyUpdateFilesystem(installRoot);
   const record = JSON.parse(await readFile(pending, "utf8"));
-  if (!record || !Array.isArray(record.names) || !record.names.every(n => allowed.includes(n)) || !record.existed || typeof record.existed !== "object" ||
-      typeof record.backup !== "string" || !record.backup.startsWith(path.join(recoverState, "backups") + path.sep)) {
+  const backupRoot = path.join(recoverState, "backups");
+  const backupName = typeof record?.backup === "string" ? path.basename(record.backup) : "";
+  if (!record || !Array.isArray(record.names) ||
+      new Set(record.names).size !== record.names.length ||
+      !record.names.every(n => allowed.includes(n) && typeof record.existed?.[n] === "boolean") ||
+      (record.sha !== undefined && (typeof record.sha !== "string" || !SHA.test(record.sha))) ||
+      typeof record.backup !== "string" ||
+      !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(backupName) ||
+      record.backup !== path.join(backupRoot, backupName)) {
     throw Error("Update recovery metadata invalid; manual inspection required");
   }
   await assertOrdinaryDirectory(record.backup);
