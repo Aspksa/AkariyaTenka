@@ -10,6 +10,8 @@ export interface HttpRouteSet {
   readonly health: (context: RequestContext) => Promise<string>;
   readonly assistantStatus?: () => Promise<string>;
   readonly assistantTurn?: (payload: unknown, context: RequestContext) => Promise<string>;
+  readonly assistantModels?: () => Promise<string>;
+  readonly assistantSettings?: (payload:unknown) => Promise<string>;
   readonly performance?: (context: RequestContext) => Promise<string>;
   readonly githubUpdates?: () => Promise<string>;
   readonly githubUpdateHistory?: () => Promise<string>;
@@ -126,6 +128,31 @@ export function createHttpApplication(
         const context: RequestContext = key === undefined ? baseContext : { ...baseContext, idempotencyKey: key };
 
         await requestContext.run(context, async () => {
+          if (request.method === "GET" && url.pathname === "/api/assistant/models" && routes.assistantModels) {
+            const peer=request.socket.remoteAddress;
+            if(config.host!=="127.0.0.1" || !["127.0.0.1","::1","::ffff:127.0.0.1"].includes(peer??"") ||
+              request.headers.host!=="127.0.0.1:"+config.port)
+              throw new AppError({code:"PERMISSION",message:"Local assistant required",correlationId:id});
+            const result=await routes.assistantModels();
+            response.writeHead(200,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
+            response.end(result);return;
+          }
+          if (request.method === "POST" && url.pathname === "/api/assistant/settings" && routes.assistantSettings) {
+            const peer=request.socket.remoteAddress;
+            if(config.host!=="127.0.0.1" || !["127.0.0.1","::1","::ffff:127.0.0.1"].includes(peer??"") ||
+              request.headers.host!=="127.0.0.1:"+config.port || request.headers.origin!=="http://127.0.0.1:"+config.port ||
+              request.headers["content-type"]?.split(";")[0]?.trim()!=="application/json")
+              throw new AppError({code:"PERMISSION",message:"Local settings origin required",correlationId:id});
+            const chunks:Buffer[]=[];let size=0;
+            for await(const part of request){const b=Buffer.isBuffer(part)?part:Buffer.from(part);size+=b.length;
+              if(size>10000)throw new AppError({code:"VALIDATION",message:"Settings request too large",correlationId:id});chunks.push(b);}
+            let payload:unknown;
+            try{payload=JSON.parse(Buffer.concat(chunks).toString("utf8"));}
+            catch{throw new AppError({code:"VALIDATION",message:"Invalid settings JSON",correlationId:id});}
+            const result=await routes.assistantSettings(payload);
+            response.writeHead(200,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
+            response.end(result);return;
+          }
           if (request.method === "GET" && url.pathname === "/api/assistant/status" && routes.assistantStatus) {
             response.writeHead(200, {"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
             response.end(await routes.assistantStatus()); return;
