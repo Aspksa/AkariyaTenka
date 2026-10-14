@@ -25,12 +25,13 @@ export function createGithubUpdateRequest(
     }
     const requested = payload.sha.toLowerCase();
     let status = await githubUpdateStatus(root, request);
-    if (status.latest !== requested && status.current !== null) {
+    if (status.latest !== requested) {
       await delay(retryDelayMs);
       status = await githubUpdateStatus(root, request);
     }
     if (status.enoughSpace === false) throw conflict("Not enough free disk space (768 MiB required)");
-    if (status.current === null) throw conflict("Current version is unknown; automatic update is unavailable");
+    // An unversioned copy (for example a ZIP download) may install the reviewed latest revision:
+    // the updater backs up the current files first and records the version marker afterwards.
     if (status.current === status.latest) throw conflict("Akariya is already up to date");
     // main moved on after the user reviewed the update: they must approve the new revision.
     if (status.latest !== requested) throw conflict("GitHub main has a newer revision; check for updates again");

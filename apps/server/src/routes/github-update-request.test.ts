@@ -50,6 +50,15 @@ describe("GitHub update request", () => {
     });
   });
 
+  it("lets an unversioned copy install the reviewed latest revision", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akariya-update-request-"));
+    try {
+      await createGithubUpdateRequest(root, mainSequence(B), 0)({ sha: B });
+      const saved = await readFile(path.join(root, ".runtime", "github-updater", "request.json"), "utf8");
+      expect(JSON.parse(saved)).toEqual({ sha: B });
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("rejects malformed revisions as validation errors", async () => {
     await withRoot(async root => {
       await expect(createGithubUpdateRequest(root, mainSequence(B), 0)({ sha: "../main" }))
