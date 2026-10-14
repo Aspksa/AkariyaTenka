@@ -11,6 +11,7 @@ import { createHttpApplication } from "./bootstrap/server.js";
 import { createHealthRoute } from "./routes/health.js";
 import { createPerformanceRoute } from "./routes/performance.js";
 import { createGithubUpdateRoute } from "./routes/github-updates.js";
+import { createGithubUpdateRequest } from "./routes/github-update-request.js";
 import { HealthService } from "./services/health-service.js";
 import { ShutdownController } from "./services/shutdown-controller.js";
 
@@ -42,12 +43,15 @@ async function main(): Promise<void> {
   });
 
   let requestSupervisorShutdown: (() => void) | undefined;
+  let requestUpdateShutdown: (() => void) | undefined;
   const server = createHttpApplication(
     config,
     {
       health: createHealthRoute(health),
       performance: createPerformanceRoute(modules.metrics),
       githubUpdates: createGithubUpdateRoute(process.cwd()),
+      githubUpdateRequest: createGithubUpdateRequest(process.cwd()),
+      githubUpdateShutdown: async () => { requestUpdateShutdown?.(); },
       supervisorShutdown: async () => { requestSupervisorShutdown?.(); }
     },
     logger,
@@ -74,6 +78,7 @@ async function main(): Promise<void> {
   );
 
   requestSupervisorShutdown = () => { void shutdown.shutdown(0, "supervisor"); };
+  requestUpdateShutdown = () => { void shutdown.shutdown(75, "github-update"); };
 
   const crash = (kind: string, reason: unknown): void => {
     const error = toError(reason);
