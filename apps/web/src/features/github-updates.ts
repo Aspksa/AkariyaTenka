@@ -100,6 +100,56 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   const history = block("update-card", historyTitle, historyList);
   parent.classList.add("updates-page");
   parent.append(summary, whatsNew, block("update-grid", backups, history));
+  const statistics=document.createElement("section");statistics.className="update-card";
+  const statsTitle=document.createElement("h3");statsTitle.textContent="📚 История проекта в цифрах";
+  const statsNote=document.createElement("p");statsNote.textContent="Расчёт по истории Git и текущим файлам. Загрузка…";
+  const statsGrid=document.createElement("div");statsGrid.className="akariya-git-stat-grid";
+  const refreshStats=document.createElement("button");refreshStats.type="button";refreshStats.className="panel-button ghost";refreshStats.textContent="Обновить статистику";
+  statistics.append(statsTitle,statsNote,refreshStats,statsGrid);
+  parent.insertBefore(statistics,parent.lastElementChild);
+  const displayNumber=(v:number|null|undefined)=>typeof v==="number"?v.toLocaleString("ru-RU"):"Нет данных";
+  const showMetric=(symbol:string,title:string,value:string,description:string):void=>{
+    const box=document.createElement("article");box.className="akariya-git-stat";
+    const heading=document.createElement("strong");heading.textContent=symbol+" "+title;
+    const metric=document.createElement("p");metric.className="akariya-git-stat-value";metric.textContent=value;
+    const detail=document.createElement("small");detail.textContent=description;
+    box.append(heading,metric,detail);statsGrid.append(box);
+  };
+  let loadingStats=false;
+  const loadStatistics=async():Promise<void>=>{
+    if(loadingStats)return;loadingStats=true;refreshStats.disabled=true;statsNote.textContent="Подсчёт Git-статистики…";
+    try{
+      const res=await fetch("/api/updates/statistics",{cache:"no-store",signal:AbortSignal.timeout(60000)});
+      if(!res.ok)throw Error("HTTP "+res.status);
+      const data=await res.json() as {
+        available:boolean;reason?:string;wordsAdded:number|null;wordsDeleted:number|null;wordsRewritten:number|null;
+        newFiles:number|null;deletedFiles:number|null;largestFile:{path:string;lines:number}|null;
+        smallestCodeFile:{path:string;lines:number}|null;oldestUntouchedFile:{path:string;lastChanged:string}|null;
+        hottestFile:{path:string;commits:number}|null;biggestGrowth:{path:string;netLines:number}|null;
+        languages:{extension:string;lines:number}[];averageCodeLines:number|null;medianCodeLines:number|null;
+        directories:number;averageFilesPerDirectory:number;markdownLines:number;jsonFiles:number;jsonBytes:number;
+      };
+      statsGrid.replaceChildren();
+      statsNote.textContent=data.available?"История: вся доступная локальная Git-история. Текущие файлы: отслеживаемые Git.":data.reason??"История Git недоступна";
+      showMetric("🌱","Сколько слов родилось",displayNumber(data.wordsAdded),"Добавленные слова в Git word-diff");
+      showMetric("✂️","Сколько слов исчезло",displayNumber(data.wordsDeleted),"Удалённые слова в Git word-diff");
+      showMetric("🔄","Переписанная история",displayNumber(data.wordsRewritten),"Оценка заменённых слов по блокам diff");
+      showMetric("🍼","Новорождённые файлы",displayNumber(data.newFiles),"Git-события добавления файлов");
+      showMetric("💀","Кладбище файлов",displayNumber(data.deletedFiles),"Git-события удаления файлов");
+      showMetric("🏋️","Файл-гигант",data.largestFile?data.largestFile.lines+" строк": "Нет данных",data.largestFile?.path??"");
+      showMetric("🐜","Самый маленький",data.smallestCodeFile?data.smallestCodeFile.lines+" строк":"Нет данных",data.smallestCodeFile?.path??"");
+      showMetric("🏚️","Старожил проекта",data.oldestUntouchedFile?new Date(data.oldestUntouchedFile.lastChanged).toLocaleDateString("ru-RU"):"Нет данных",data.oldestUntouchedFile?.path??"");
+      showMetric("🔥","Горячий файл",data.hottestFile?displayNumber(data.hottestFile.commits)+" изменений":"Нет данных",data.hottestFile?.path??"");
+      showMetric("🌱","Самый выросший",data.biggestGrowth?displayNumber(data.biggestGrowth.netLines)+" строк":"Нет данных",data.biggestGrowth?.path??"");
+      showMetric("🎨","Языки проекта",data.languages.slice(0,8).map(x=>x.extension+" "+displayNumber(x.lines)).join(" · ")||"Нет данных","Строки по расширениям в текущем коде");
+      showMetric("📏","Средний файл",displayNumber(data.averageCodeLines)+" / "+displayNumber(data.medianCodeLines),"Среднее / медиана строк кода");
+      showMetric("🗂️","Папки",displayNumber(data.directories),displayNumber(data.averageFilesPerDirectory)+" файлов на каталог в среднем");
+      showMetric("📝","Документация",displayNumber(data.markdownLines)+" строк","Текущие файлы .md");
+      showMetric("🗃️","Данные JSON",displayNumber(data.jsonFiles)+" файлов",displayNumber(data.jsonBytes)+" байт");
+    }catch(e){statsNote.textContent="Не удалось получить статистику: "+(e instanceof Error?e.message:String(e));}
+    finally{loadingStats=false;refreshStats.disabled=false;}
+  };
+  refreshStats.addEventListener("click",()=>{void loadStatistics();});
   const snoozeKey = "akariya-update-snooze";
   function snoozed(sha: string): boolean {
     try {
@@ -338,4 +388,5 @@ export function mountGithubUpdates(parent: HTMLElement): void {
     if (document.visibilityState === "visible") void check();
   }, intervalMs);
   void check();
+  void loadStatistics();
 }
