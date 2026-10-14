@@ -200,6 +200,17 @@ export function mountGithubUpdates(parent: HTMLElement): void {
           headers: { "content-type": "application/json", "x-akariya-action": "github-install" },
           body: JSON.stringify({ sha })
         });
+        if (response.status === 409) {
+          // GitHub main changed (or the install became unnecessary) after the last check:
+          // refresh so the user reviews and approves the revision that is current now.
+          installing = false;
+          install.textContent = "Установить обновление";
+          await check();
+          if (approvedSha !== sha && !install.hidden)
+            message.textContent = "На GitHub появилась более новая версия " + approvedSha?.slice(0, 12) +
+              ". Проверьте изменения и нажмите «Установить обновление» ещё раз.";
+          return;
+        }
         if (!response.ok) {
           throw new Error("Установка отклонена (HTTP " + response.status + ")");
         }
