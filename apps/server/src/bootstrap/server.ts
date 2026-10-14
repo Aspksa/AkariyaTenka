@@ -97,7 +97,7 @@ export function createHttpApplication(
               request.headers.host !== host || request.headers.origin !== "http://" + host ||
               request.headers["x-akariya-action"] !== (url.pathname === "/api/updates/rollback" ? "github-rollback" : "github-install") ||
               request.headers["content-type"]?.split(";")[0]?.trim() !== "application/json") {
-            throw new AppError({ code: "PERMISSION", message: "Local update approval required", correlationId: id });
+            throw new AppError({ code: "PERMISSION", message: "Update request rejected: launch using AKARIYA.bat and open the production interface at http://" + host + " (development proxy and localhost aliases are not supported)", correlationId: id });
           }
           const chunks: Buffer[] = [];
           let length = 0;
