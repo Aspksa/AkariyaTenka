@@ -47,7 +47,7 @@ export async function githubUpdateProgress(root: string): Promise<UpdateDownload
   if (!record || typeof record !== "object") return null;
   const v = record as Record<string, unknown>;
   if (typeof v.phase !== "string" ||
-      !["downloading","downloaded","retrying","validating","installing","restarting","confirmed","failed","rolled_back"].includes(v.phase) ||
+      !["starting","downloading","downloaded","retrying","validating","installing","restarting","confirmed","failed","rolled_back"].includes(v.phase) ||
       typeof v.received !== "number" || !Number.isSafeInteger(v.received) || v.received < 0 ||
       (v.total !== null && (typeof v.total !== "number" || !Number.isSafeInteger(v.total) || v.total < 0)) ||
       typeof v.startedAt !== "string" || Number.isNaN(Date.parse(v.startedAt)) ||
