@@ -54,13 +54,19 @@ export function inspectReleaseZip(bytes) {
     const end = cursor + 46 + nameLength + extraLength + commentLength;
     if (end > eocd || compressed === 0xffffffff || expanded === 0xffffffff || offset === 0xffffffff) throw new Error("Unsupported ZIP64 or entry bounds");
     const nameBytes = bytes.subarray(cursor + 46, cursor + 46 + nameLength);
-    const name = new TextDecoder("utf-8", { fatal: true }).decode(nameBytes);
+    const rawName = new TextDecoder("utf-8", { fatal: true }).decode(nameBytes);
+    // The release workflow uses `zip -r archive .`, which prefixes entries with "./".
+    const name = rawName.startsWith("./") ? rawName.slice(2) : rawName;
     cursor = end;
     if ((flags & 1) !== 0 || (flags & ~0x808) !== 0 || ![0,8].includes(method)) throw new Error("Unsupported ZIP encryption or compression");
     const unixType = (external >>> 16) & 0xf000;
     if (unixType && ![0x8000,0x4000].includes(unixType)) throw new Error("Symlinks and special ZIP entries are forbidden");
     const directory = name.endsWith("/");
-    if (directory) continue;
+    if (directory) {
+      const dirName = name.slice(0, -1);
+      if (dirName && !safeUpdatePath(dirName)) throw new Error("Unsafe ZIP directory: " + name);
+      continue;
+    }
     if (!safeUpdatePath(name)) {
       // The generated release contains a managed version marker, not an installable payload.
       if (name === ".akariya-version") continue;
