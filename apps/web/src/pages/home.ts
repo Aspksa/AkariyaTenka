@@ -92,7 +92,7 @@ export function createHomeView():HomeView {
     panel.scrollIntoView({behavior:"smooth",block:"nearest"});
    if(loaded)return;
    loaded=true;area.textContent="Загрузка раздела…";
-   void info.loader().then(mount=>mount(area)).catch((error:unknown)=>{
+   void info.loader().then(mount=>{area.replaceChildren();return mount(area);}).catch((error:unknown)=>{
     loaded=false;area.textContent=error instanceof Error?error.message:String(error);
    });
   });
@@ -117,7 +117,7 @@ export function createHomeView():HomeView {
 
  const intro=el("section","intro");
  intro.append(el("p","section-kicker","ВАША СИСТЕМА · ПОД КОНТРОЛЕМ"),el("h1",undefined,"Добро пожаловать в Akariya."),el("p","intro-subtitle","Тихое пространство для управления, безопасности и развития вашей персональной системы."));
- const updateNotice=el("button","nav-item");
+ const updateNotice=el("button","update-notice");
  updateNotice.type="button";
  updateNotice.hidden=true;
  updateNotice.setAttribute("aria-label","Открыть доступное обновление Akariya");
@@ -135,7 +135,7 @@ export function createHomeView():HomeView {
    } catch {/* no saved preference */}
    updateNotice.hidden=data.updateAvailable!==true || deferred;
    if(!updateNotice.hidden) {
-    updateNotice.textContent="Доступно обновление Akariya — посмотреть";
+    updateNotice.replaceChildren(createIcon("info"),el("span",undefined,"Доступно обновление Akariya"),el("strong",undefined,"Посмотреть"));
     if(typeof data.latest==="string"&&/^[0-9a-f]{40}$/i.test(data.latest))
      notifications.notify({id:"update:"+data.latest,kind:"update",title:"Доступно обновление",
        detail:"Новая версия Akariya "+data.latest.slice(0,12)+" готова к установке."});
@@ -155,14 +155,15 @@ export function createHomeView():HomeView {
  status.append(statusCaption,badge.element);
 
  const actionHeader=el("div","section-title");
- actionHeader.append(el("h2",undefined,"Центр управления"),el("span",undefined,"БЫСТРЫЙ ДОСТУП"));
+ actionHeader.append(el("h2",undefined,"Центр управления"));
  const cards=el("div","action-grid");
  const dashboardControls=el("div","dashboard-controls");
  const customize=el("button","dashboard-customize","Настроить главную");
  customize.type="button";customize.append(createIcon("settings"));customize.title="Настроить карточки";
  customize.setAttribute("aria-expanded","false");
  const editor=el("div","dashboard-editor");editor.hidden=true;
- dashboardControls.append(customize,editor);
+ actionHeader.append(customize);
+ dashboardControls.append(editor);
  const preferencesKey="akariya-dashboard-v1";
  let preferences={...DEFAULT_DASHBOARD,order:[...DEFAULT_DASHBOARD.order],hidden:[...DEFAULT_DASHBOARD.hidden]};
  try{preferences=parseDashboardPreferences(JSON.parse(localStorage.getItem(preferencesKey)??"null"));}catch{/* Use defaults. */}
