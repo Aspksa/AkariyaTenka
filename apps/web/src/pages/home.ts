@@ -1,5 +1,8 @@
 import { createHealthBadge } from "../components/health-badge.js";
 import type { HealthState } from "../state/health.js";
+import { createIcon, type IconName } from "../components/icons.js";
+import { createNotificationCenter } from "../components/notifications.js";
+import { DEFAULT_DASHBOARD, moveDashboardCard, parseDashboardPreferences, toggleDashboardCard, type CardId } from "../state/dashboard-preferences.js";
 
 export interface HomeView { readonly element: HTMLElement; update(state: HealthState): void; }
 function el<K extends keyof HTMLElementTagNameMap>(tag:K,cls?:string,text?:string):HTMLElementTagNameMap[K] {
@@ -8,8 +11,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag:K,cls?:string,text?:strin
  if(text!==undefined)node.textContent=text;
  return node;
 }
-function icon(name:string):HTMLElement {
- const symbol=el("span","nav-symbol",name);
+function icon(name:IconName):HTMLElement {
+ const symbol=el("span","nav-symbol");
+ symbol.append(createIcon(name));
  symbol.setAttribute("aria-hidden","true");
  return symbol;
 }
@@ -25,7 +29,7 @@ export function createHomeView():HomeView {
   collapseButton.setAttribute("aria-expanded",String(!collapsed));
   collapseButton.setAttribute("aria-label",collapsed?"Развернуть боковое меню":"Свернуть боковое меню");
   collapseButton.title=collapsed?"Развернуть меню":"Свернуть меню";
-  collapseButton.textContent=collapsed?"❯":"❮";
+  collapseButton.replaceChildren(createIcon(collapsed?"chevron-right":"chevron-left"));
  }
  let savedCollapsed=false;
  try{savedCollapsed=window.localStorage.getItem(collapseKey)==="true";}catch{/* Storage can be disabled. */}
@@ -44,7 +48,7 @@ export function createHomeView():HomeView {
  const nav=el("nav","navigation");nav.id="akariya-sidebar-navigation";nav.setAttribute("aria-label","Разделы");
  const sectionTitle=el("p","nav-heading","ПРОСТРАНСТВО");
  const topLink=el("button","nav-item active");
- topLink.type="button";topLink.append(icon("⌂"),el("span",undefined,"Обзор"));
+ topLink.type="button";topLink.append(icon("home"),el("span",undefined,"Обзор"));
  topLink.setAttribute("aria-current","page");
  topLink.title="Обзор";topLink.setAttribute("aria-label","Обзор");
  const sectionLabel=el("p","nav-heading secondary-heading","УПРАВЛЕНИЕ");
@@ -52,10 +56,18 @@ export function createHomeView():HomeView {
  const panels=el("section","tool-panels");
  panels.setAttribute("aria-label","Панель управления");
  const toolInfo=[
-  {name:"Диагностика",symbol:"◇",loader:()=>import("../features/diagnostics.js").then(m=>m.mountDiagnostics),caption:"Состояние и измерения системы"},
-  {name:"Обновления GitHub",symbol:"↻",loader:()=>import("../features/github-updates.js").then(m=>m.mountGithubUpdates),caption:"Проверка новых изменений проекта"}
+  {name:"Диагностика",symbol:"activity" as const,loader:()=>import("../features/diagnostics.js").then(m=>m.mountDiagnostics),caption:"Состояние и измерения системы"},
+  {name:"Обновления GitHub",symbol:"refresh" as const,loader:()=>import("../features/github-updates.js").then(m=>m.mountGithubUpdates),caption:"Проверка новых изменений проекта"}
  ];
  const workspace=el("section","content");
+ const notifications=createNotificationCenter(()=>{(tools.children[1] as HTMLButtonElement)?.click();});
+ function highlight(active:HTMLButtonElement|null):void {
+  for(const other of [topLink,...Array.from(tools.querySelectorAll<HTMLButtonElement>("button"))]){
+   other.classList.toggle("active",other===active);
+   if(other===active)other.setAttribute("aria-current","page");
+   else other.removeAttribute("aria-current");
+  }
+ }
  for(const info of toolInfo){
   const button=el("button","nav-item");button.type="button";
   button.append(icon(info.symbol),el("span",undefined,info.name));
@@ -71,12 +83,13 @@ export function createHomeView():HomeView {
   let loaded=false;
   button.addEventListener("click",()=>{
    const opening=panel.hidden;
-   for(const other of tools.querySelectorAll("button")){other.classList.remove("active");other.setAttribute("aria-expanded","false");}
+   for(const other of tools.querySelectorAll("button")){other.setAttribute("aria-expanded","false");}
    for(const other of panels.children){(other as HTMLElement).hidden=true;}
    panel.hidden=!opening;
-   if(!opening)return;
-   button.classList.add("active");button.setAttribute("aria-expanded","true");
-   panel.scrollIntoView({behavior:"smooth",block:"nearest"});
+   if(!opening){highlight(topLink);return;}
+   highlight(button);button.setAttribute("aria-expanded","true");
+   if(!window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    panel.scrollIntoView({behavior:"smooth",block:"nearest"});
    if(loaded)return;
    loaded=true;area.textContent="Загрузка раздела…";
    void info.loader().then(mount=>mount(area)).catch((error:unknown)=>{
@@ -87,7 +100,8 @@ export function createHomeView():HomeView {
  }
  nav.append(sectionTitle,topLink,sectionLabel,tools);
  topLink.addEventListener("click",()=>{
-  for(const other of tools.querySelectorAll("button")){other.classList.remove("active");other.setAttribute("aria-expanded","false");}
+  for(const other of tools.querySelectorAll("button")){other.setAttribute("aria-expanded","false");}
+  highlight(topLink);
   for(const panel of panels.children)(panel as HTMLElement).hidden=true;
   window.scrollTo({top:0,behavior:"smooth"});
  });
@@ -98,7 +112,7 @@ export function createHomeView():HomeView {
  const mast=el("header","masthead");
  const crumb=el("span","breadcrumb","РАБОЧЕЕ ПРОСТРАНСТВО  /  ОБЗОР");
  const mastRight=el("div","mast-right");
- mastRight.append(el("span","system-label","AKARIYA  ·  v0.1"));
+ mastRight.append(notifications.element,el("span","system-label","AKARIYA  ·  v0.1"));
  mast.append(crumb,mastRight);
 
  const intro=el("section","intro");
@@ -120,7 +134,12 @@ export function createHomeView():HomeView {
     deferred=item?.sha===data.latest && typeof item?.until==="number" && item.until>Date.now();
    } catch {/* no saved preference */}
    updateNotice.hidden=data.updateAvailable!==true || deferred;
-   if(!updateNotice.hidden) updateNotice.textContent="✦ Доступно обновление Akariya — посмотреть";
+   if(!updateNotice.hidden) {
+    updateNotice.textContent="Доступно обновление Akariya — посмотреть";
+    if(typeof data.latest==="string"&&/^[0-9a-f]{40}$/i.test(data.latest))
+     notifications.notify({id:"update:"+data.latest,kind:"update",title:"Доступно обновление",
+       detail:"Новая версия Akariya "+data.latest.slice(0,12)+" готова к установке."});
+   }
   } catch {/* GitHub may be temporarily offline; never interrupt the home page */}
  }
  void checkUpdateNotice();
@@ -138,20 +157,66 @@ export function createHomeView():HomeView {
  const actionHeader=el("div","section-title");
  actionHeader.append(el("h2",undefined,"Центр управления"),el("span",undefined,"БЫСТРЫЙ ДОСТУП"));
  const cards=el("div","action-grid");
- const actions=[
-  {index:"01",name:"Диагностика",detail:"Мониторинг системы, показатели производительности и состояние модулей."},
-  {index:"02",name:"Обновления GitHub",detail:"Проверить последнюю версию Akariya на GitHub."}
- ];
- actions.forEach((data,index)=>{
-  const card=el("button","action-card");
-  card.type="button";
-  card.append(el("span","card-index",data.index),el("strong","card-name",data.name),el("span","card-detail",data.detail),el("span","card-arrow","↗"));
-  card.addEventListener("click",()=>{const button=tools.children[index] as HTMLButtonElement;button.click();});
-  cards.append(card);
+ const dashboardControls=el("div","dashboard-controls");
+ const customize=el("button","dashboard-customize","Настроить главную");
+ customize.type="button";customize.append(createIcon("settings"));customize.title="Настроить карточки";
+ customize.setAttribute("aria-expanded","false");
+ const editor=el("div","dashboard-editor");editor.hidden=true;
+ dashboardControls.append(customize,editor);
+ const preferencesKey="akariya-dashboard-v1";
+ let preferences={...DEFAULT_DASHBOARD,order:[...DEFAULT_DASHBOARD.order],hidden:[...DEFAULT_DASHBOARD.hidden]};
+ try{preferences=parseDashboardPreferences(JSON.parse(localStorage.getItem(preferencesKey)??"null"));}catch{/* Use defaults. */}
+ const actions:Record<CardId,{index:string;name:string;detail:string;tool:number}>={
+  diagnostics:{index:"01",name:"Диагностика",detail:"Мониторинг системы, показатели производительности и состояние модулей.",tool:0},
+  updates:{index:"02",name:"Обновления GitHub",detail:"Проверить последнюю версию Akariya на GitHub.",tool:1}
+ };
+ function persistPreferences():void {
+  try{localStorage.setItem(preferencesKey,JSON.stringify(preferences));}catch{/* Storage may be disabled. */}
+ }
+ function renderDashboard():void {
+  cards.replaceChildren();editor.replaceChildren();
+  for(const id of preferences.order){
+   const data=actions[id];
+   const hidden=preferences.hidden.includes(id);
+   if(!hidden){
+    const card=el("button","action-card");card.type="button";
+    const emblem=el("span","card-icon");
+    emblem.append(createIcon(id==="diagnostics"?"activity":"refresh"));
+    card.append(el("span","card-index",data.index),emblem,el("strong","card-name",data.name),
+      el("span","card-detail",data.detail),el("span","card-arrow","↗"));
+    card.addEventListener("click",()=>{(tools.children[data.tool] as HTMLButtonElement).click();});
+    cards.append(card);
+   }
+   const line=el("div","dashboard-editor-row");
+   const name=el("span",undefined,data.name);
+   line.append(name);
+   const makeControl=(label:string,glyph:IconName,fn:()=>void,disabled=false)=>{
+    const action=el("button","dashboard-editor-button");action.type="button";action.title=label;
+    action.setAttribute("aria-label",label+" — "+data.name);action.disabled=disabled;
+    action.append(createIcon(glyph));action.addEventListener("click",fn);line.append(action);
+   };
+   const position=preferences.order.indexOf(id);
+   makeControl("Выше","arrow-up",()=>{preferences=moveDashboardCard(preferences,id,-1);persistPreferences();renderDashboard();},position===0);
+   makeControl("Ниже","arrow-down",()=>{preferences=moveDashboardCard(preferences,id,1);persistPreferences();renderDashboard();},position===preferences.order.length-1);
+   makeControl(hidden?"Показать":"Скрыть",hidden?"eye-off":"eye",()=>{
+    preferences=toggleDashboardCard(preferences,id);persistPreferences();renderDashboard();
+   });
+   editor.append(line);
+  }
+  if(!cards.childElementCount)cards.append(el("p","dashboard-empty","Все карточки скрыты. Откройте «Настроить главную», чтобы вернуть их."));
+ }
+ customize.addEventListener("click",()=>{
+  editor.hidden=!editor.hidden;
+  customize.setAttribute("aria-expanded",String(!editor.hidden));
  });
+ renderDashboard();
  const bottom=el("div","bottom-line");
  bottom.append(el("span",undefined,"AKARIYA TENKA"),el("span",undefined,"CRIMSON · PRIVATE BY DESIGN"));
- workspace.append(mast,intro,updateNotice,status,actionHeader,cards,panels,bottom);
+ workspace.append(mast,intro,updateNotice,status,actionHeader,dashboardControls,cards,panels,bottom);
  shell.append(aside,workspace);
- return {element:shell,update:(state)=>badge.update(state)};
+ return {element:shell,update:(state)=>{
+  badge.update(state);
+  if(state.kind==="error")notifications.notify({id:"health:error",kind:"error",title:"Проблема соединения",
+   detail:state.message.slice(0,250)});
+ }};
 }
