@@ -1,0 +1,14 @@
+name: Cleanup verified backup branch
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.git.deleteRef({owner: context.repo.owner, repo: context.repo.repo, ref: 'heads/feature/portable-verified-backups'});
