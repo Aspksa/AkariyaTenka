@@ -142,8 +142,9 @@ export function createHttpApplication(
               if (size>12000) throw new AppError({code:"VALIDATION",message:"Assistant request too large",correlationId:id}); chunks.push(b); }
             let payload:unknown; try {payload=JSON.parse(Buffer.concat(chunks).toString("utf8"));}
             catch {throw new AppError({code:"VALIDATION",message:"Invalid JSON",correlationId:id});}
+            const result = await routes.assistantTurn(payload,context);
             response.writeHead(200,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
-            response.end(await routes.assistantTurn(payload,context)); return;
+            response.end(result); return;
           }
           if (request.method === "GET" && url.pathname === "/api/health") {
             response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
