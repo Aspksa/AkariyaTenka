@@ -78,6 +78,29 @@ export function createHomeView(): HomeView {
       .finally(() => { updatesButton.disabled = false; });
   });
 
+  const portableButton = textElement("button", "diagnostics-trigger", "Перенос и SSD");
+  portableButton.type = "button";
+  const portablePanel = document.createElement("section");
+  portablePanel.className = "diagnostics";
+  portablePanel.hidden = true;
+  portableButton.addEventListener("click", () => {
+    portablePanel.hidden = !portablePanel.hidden;
+    if (portablePanel.hidden) return;
+    portablePanel.textContent = "Проверка переносимой установки…";
+    void fetch("/api/portable/status", {cache:"no-store"})
+      .then(async response => { if (!response.ok) throw Error("Статус недоступен"); return response.json() as Promise<Record<string, unknown>>; })
+      .then(status => {portablePanel.textContent = [
+        "Установка: " + (status.installationId ?? "не настроена"),
+        "Общий снимок: " + (status.baseline ? "создан" : "отсутствует"),
+        "Приложение запущено: " + (status.runtimeLocked ? "да" : "нет"),
+        "Перенос выполняется: " + (status.syncLocked ? "да" : "нет"),
+        "Публичный ключ: " + (status.publicKeyPresent ? "есть" : "нет"),
+        "Зашифрованное хранилище: " + (status.encryptedVaultPresent ? "есть" : "нет"),
+        "Изменения переносите только после остановки Akariya. Автоматическое слияние баз данных пока недоступно."
+      ].join("\\n"); portablePanel.style.whiteSpace = "pre-line";})
+      .catch(error => {portablePanel.textContent = error instanceof Error ? error.message : String(error);});
+  });
+
   hero.append(
     textElement("p", "eyebrow", "FOUNDATION / P0–P2"),
     textElement("h1", undefined, "Akariya Tenka"),
@@ -86,7 +109,9 @@ export function createHomeView(): HomeView {
     diagnosticsButton,
     diagnostics,
     updatesButton,
-    updatesPanel
+    updatesPanel,
+    portableButton,
+    portablePanel
   );
 
   const grid = document.createElement("section");
