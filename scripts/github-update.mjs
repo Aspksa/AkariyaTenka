@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, writeFile, rm, rename, lstat, readdir, copyFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, appendFile, rm, rename, lstat, readdir, copyFile } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
@@ -19,6 +19,28 @@ const allowed = ["apps", "packages", "scripts", "docs", "AKARIYA.bat", "package.
 const protectedNames = new Set(["data", ".env", ".git", "node_modules", ".runtime",
   "keys", ".keys", ".updates", ".portable-state", ".akariya-version"]);
 const exists = async p => { try { await lstat(p); return true; } catch (e) { if (e.code === "ENOENT") return false; throw e; } };
+const HISTORY_EVENTS = new Set(["download_started", "validated", "prepared", "confirmed", "rolled_back", "failed"]);
+export async function appendGithubUpdateEvent(event, revision, installRoot = root) {
+  if (!HISTORY_EVENTS.has(event) || (revision !== null && (!SHA.test(revision) || typeof revision !== "string")))
+    throw Error("Invalid update history record");
+  const directory = path.join(installRoot, ".runtime", "github-updater");
+  await mkdir(directory, { recursive: true });
+  const file = path.join(directory, "history.jsonl");
+  const archived = file + ".1";
+  if (await exists(file)) {
+    const info = await lstat(file);
+    if (!info.isFile() || info.isSymbolicLink()) throw Error("Unsafe update history file");
+    if (info.size >= 1024 * 1024) {
+      await rm(archived, { force: true });
+      await rename(file, archived);
+    }
+  }
+  await appendFile(file, JSON.stringify({ at: new Date().toISOString(), event, revision }) + "\n", { mode: 0o600 });
+}
+async function tryHistory(event, revision, installRoot = root) {
+  try { await appendGithubUpdateEvent(event, revision, installRoot); }
+  catch (error) { console.warn("Could not write update history:", error); }
+}
 async function assertOrdinaryDirectory(directory) {
   const info = await lstat(directory);
   if (!info.isDirectory() || info.isSymbolicLink()) throw Error("Unsafe update directory: " + directory);
@@ -174,6 +196,7 @@ export async function confirmGithubUpdate(sha, installRoot = root) {
   if (!SHA.test(sha) || await pendingGithubUpdate(installRoot) !== sha)
     throw Error("Pending update confirmation SHA mismatch");
   await rm(path.join(installRoot, ".runtime", "github-updater", "pending.json"));
+  await tryHistory("confirmed", sha, installRoot);
   try { await pruneGithubUpdateBackups(installRoot); }
   catch (error) { console.warn("Backup pruning failed; update remains confirmed:", error); }
 }
@@ -199,6 +222,7 @@ export async function recoverInterruptedUpdate(installRoot = root) {
   await restore(record.backup, record.names, record.existed, installRoot);
   await restoreMarkers(record.backup, installRoot);
   await rm(pending, { force: true });
+  await tryHistory("rolled_back", typeof record.sha === "string" && SHA.test(record.sha) ? record.sha : null, installRoot);
   return true;
 }
 export async function applyGithubUpdate(sha) {
@@ -215,6 +239,7 @@ export async function applyGithubUpdate(sha) {
     const extracted = path.join(work, "extracted");
     await mkdir(extracted);
     console.log("Downloading pinned GitHub revision", sha);
+    await tryHistory("download_started", sha);
     await download(sha, zip);
     if (process.platform !== "win32") throw Error("GitHub ZIP installer currently supports Windows only");
     await extractWindows(zip, extracted);
@@ -233,6 +258,7 @@ export async function applyGithubUpdate(sha) {
     for (const artifact of ["apps/server/dist/server.mjs", "apps/web/dist/index.html"]) {
       if (!await exists(path.join(staged, artifact))) throw Error("Validated build is missing " + artifact);
     }
+    await tryHistory("validated", sha);
     console.log("Probing staged backend and web without modifying installation");
     await probe(staged);
     backup = path.join(state, "backups", randomUUID());
@@ -262,10 +288,12 @@ export async function applyGithubUpdate(sha) {
     }
     await writeFile(path.join(root, ".akariya-version"), sha + "\n");
     await rm(path.join(root, ".akariya-build.json"), { force: true });
+    await tryHistory("prepared", sha);
     console.log("Update installed; awaiting confirmation from restarted launcher");
     return true;
   } catch (error) {
     console.error("[UPDATE ERROR]", error instanceof Error ? error.message : String(error));
+    await tryHistory("failed", sha);
     if (swapped) {
       await restore(backup, planned, existed);
       await restoreMarkers(backup);
