@@ -1,4 +1,5 @@
 import { performance } from "node:perf_hooks";
+import { randomUUID } from "node:crypto";
 import { AppError, Logger, SystemClock, toError } from "@akariya/core";
 import { createSecretRedactor } from "@akariya/security";
 import { AsyncLocalRequestContextScope } from "./adapters/request-context-scope.js";
@@ -56,7 +57,21 @@ async function main(): Promise<void> {
         const input = payload as {text?:unknown;sessionId?:unknown};
         if (!input || typeof input.text !== "string" || input.text.length > 8000 || (input.sessionId !== undefined && typeof input.sessionId !== "string"))
           throw new AppError({code:"VALIDATION",message:"Invalid assistant input"});
-        return JSON.stringify(await assistant.runtime.runTurn({text:input.text,...(typeof input.sessionId === "string" ? {sessionId:input.sessionId} : {})},context));
+        const text = input.text.trim();
+        // Store long-term memory only on explicit user request.
+        const remember = /^(?:запомни(?:\s+это)?\s*[:：-]\s*|remember\s*[:：-]\s*)(.+)$/isu.exec(text);
+        if (remember) {
+          const fact = remember[1]?.trim() ?? "";
+          if (fact.length < 1 || fact.length > 2000)
+            throw new AppError({code:"VALIDATION",message:"Memory must be between 1 and 2000 characters"});
+          const now = clock.now().toISOString();
+          await storage.assistant.put({id:randomUUID(),scope:"assistant",text:fact,
+            source:{kind:"user"},tags:[],createdAt:now,updatedAt:now});
+          return JSON.stringify({status:"completed",sessionId:typeof input.sessionId==="string"?input.sessionId:null,
+            turnId:randomUUID(),text:"Сохранено в долговременной памяти.",replayed:false,
+            usage:{inputTokens:0,outputTokens:0,costMicros:0}});
+        }
+        return JSON.stringify(await assistant.runtime.runTurn({text,...(typeof input.sessionId === "string" ? {sessionId:input.sessionId} : {})},context));
       },
       performance: createPerformanceRoute(modules.metrics),
       githubUpdates: createGithubUpdateRoute(process.cwd()),
