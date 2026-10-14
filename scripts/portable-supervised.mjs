@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile, lstat } from "node:fs/promises";
 import path from "node:path";
 import { comparePortableAncestry } from "./portable-state.mjs";
 import { applyPortableReplacement } from "./portable-replace.mjs";
@@ -41,6 +41,10 @@ export async function queuePortableAction(root, input, sessionToken) {
 }
 export async function performQueuedPortableAction(root, sessionToken) {
   const pending=requestPath(root), processing=path.join(statePath(root),"transfer-processing.json");
+  try {
+    await lstat(processing);
+    throw Error("Previous portable transfer was interrupted; inspect stale processing journal before retrying");
+  } catch (error) { if (error.code !== "ENOENT") throw error; }
   await rename(pending,processing);
   try {
     const raw=await readFile(processing,"utf8");
