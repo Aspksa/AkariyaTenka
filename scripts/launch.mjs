@@ -8,6 +8,7 @@ import { performance } from "node:perf_hooks";
 import { inspectWorkspaceLinks } from "./workspace-health.mjs";
 import { verifyPrebuilt } from "./prebuilt.mjs";
 import { acquireRuntimeLock } from "./runtime-lock.mjs";
+import { recoverInterruptedUpdate } from "./github-update.mjs";
 
 const script = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(script), "..");
@@ -359,6 +360,35 @@ async function recoverBackendCrash(message) {
   });
 }
 
+async function installPendingGithubUpdate() {
+  ending = true;
+  await stopChildrenGracefully();
+  if (releaseRuntimeLock) { await releaseRuntimeLock(); releaseRuntimeLock = undefined; }
+  const requestFile = path.join(root, ".runtime", "github-updater", "request.json");
+  let sha;
+  try {
+    const fs = await import("node:fs/promises");
+    const request = JSON.parse(await fs.readFile(requestFile, "utf8"));
+    if (!/^[a-f0-9]{40}$/.test(request.sha)) throw Error("Invalid requested GitHub revision");
+    sha = request.sha;
+    await fs.rm(requestFile, { force: true });
+  } catch (error) {
+    console.error("[UPDATE ERROR] Invalid pending request", error);
+    await relaunch({ noOpen: true, port: currentPort });
+    return;
+  }
+  console.log("Installing GitHub update", sha);
+  const result = await new Promise(resolve => {
+    const child = spawn(process.execPath, [path.join(root, "scripts", "github-update.mjs"), sha], {
+      cwd: root, stdio: "inherit", env: process.env
+    });
+    child.once("error", () => resolve(1));
+    child.once("exit", code => resolve(code ?? 1));
+  });
+  if (result !== 0) warn("Update failed; previous version will be started.");
+  await relaunch({ noOpen: false, port: currentPort });
+}
+
 function spawnManaged(label, command, commandArgs, options = {}) {
   const child = spawn(command, commandArgs, {
     cwd: options.cwd ?? root,
@@ -372,8 +402,7 @@ function spawnManaged(label, command, commandArgs, options = {}) {
     children.delete(child);
     if (ending) return;
     if (label === "backend" && code === RESTART_CODE) {
-      step("Restart requested by Akariya");
-      void relaunch({ noOpen: true, port: currentPort });
+      void installPendingGithubUpdate();
       return;
     }
     if (code === 0 && !signal) {
@@ -392,6 +421,7 @@ async function main() {
   if (!Number.isInteger(major) || major < 20) throw new Error(`Node.js 20+ is required; found ${process.version}`);
 
   releaseRuntimeLock = await acquireRuntimeLock(root);
+  if (await recoverInterruptedUpdate()) warn("Interrupted update rolled back before startup");
   const prebuilt = options.dev ? null : await verifyPrebuilt(root);
 
   if (prebuilt !== null) {
