@@ -16,7 +16,7 @@
     "build:server": "node scripts/build-server.mjs",
     "build": "npm run clean && npm run build:ts && npm run build:server && npm run build -w @akariya/web",
     "start": "node scripts/launch.mjs",
-    "test:launcher": "node --test scripts/workspace-health.test.mjs scripts/apply-update.test.mjs scripts/prebuilt.test.mjs scripts/update-manager.test.mjs",
+    "test:launcher": "node --test scripts/workspace-health.test.mjs scripts/apply-update.test.mjs scripts/prebuilt.test.mjs scripts/update-manager.test.mjs scripts/prepare-update.test.mjs",
     "test": "npm run test:launcher && vitest run",
     "typecheck": "tsc -b packages/core packages/contracts packages/persistence packages/security packages/assistant apps/server && tsc -p apps/web/tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
     "check": "npm run typecheck && npm test && npm run build",
