@@ -7,6 +7,8 @@ import { loadConfig } from "./bootstrap/config.js";
 import { createStorage } from "./bootstrap/storage.js";
 import { createSecurity } from "./bootstrap/security.js";
 import { createAssistant } from "./bootstrap/assistant.js";
+import { LocalBrainSettings, type BrainSettings } from "./services/local-brain-settings.js";
+import { OpenAICompatibleProvider, UnavailableAssistantProvider } from "@akariya/assistant";
 import { createModules } from "./bootstrap/modules.js";
 import { createHttpApplication } from "./bootstrap/server.js";
 import { createHealthRoute } from "./routes/health.js";
@@ -27,6 +29,20 @@ async function main(): Promise<void> {
   const storage = await createStorage(config);
   const security = createSecurity(storage.audit, clock, process.env);
   const assistant = createAssistant(security.policy, security.approvals, storage.audit, clock, storage.assistant);
+  const brain = new LocalBrainSettings(config.dataDir);
+  let brainConfig = await brain.readSettings();
+  let localKey = await brain.readKey();
+  const cloudKey = () => localKey || process.env.AKARIYA_CLOUDRU_API_KEY || null;
+  function configureBrain():void {
+    const key = cloudKey();
+    if (key) assistant.setProvider(new OpenAICompatibleProvider(key,brainConfig.model,
+      "https://foundation-models.api.cloud.ru/v1/chat/completions",
+      {temperature:brainConfig.temperature,topP:brainConfig.topP,maxCompletionTokens:brainConfig.maxCompletionTokens}));
+    else if (process.env.AKARIYA_AI_API_KEY && process.env.AKARIYA_AI_MODEL)
+      assistant.setProvider(new OpenAICompatibleProvider(process.env.AKARIYA_AI_API_KEY,process.env.AKARIYA_AI_MODEL));
+    else assistant.setProvider(new UnavailableAssistantProvider());
+  }
+  configureBrain();
   const modules = createModules(clock, requestContext);
   await modules.kernel.start();
 
@@ -52,7 +68,37 @@ async function main(): Promise<void> {
     config,
     {
       health: createHealthRoute(health),
-      assistantStatus: async () => JSON.stringify({configured: Boolean(process.env.AKARIYA_CLOUDRU_API_KEY || (process.env.AKARIYA_AI_API_KEY && process.env.AKARIYA_AI_MODEL)), provider: process.env.AKARIYA_CLOUDRU_API_KEY ? "Cloud.ru" : "OpenAI-compatible", model: process.env.AKARIYA_CLOUDRU_API_KEY ? (process.env.AKARIYA_CLOUDRU_MODEL || "ai-sage/GigaChat3-10B-A1.8B") : (process.env.AKARIYA_AI_MODEL ?? null), memory: true}),
+      assistantStatus: async () => JSON.stringify({
+        configured:Boolean(cloudKey() || (process.env.AKARIYA_AI_API_KEY && process.env.AKARIYA_AI_MODEL)),
+        keyStored:Boolean(localKey), provider:cloudKey()?"Cloud.ru":"OpenAI-compatible",
+        model:cloudKey()?brainConfig.model:(process.env.AKARIYA_AI_MODEL??null),
+        settings:brainConfig,memory:true
+      }),
+      assistantModels: async () => {
+        const key=cloudKey();
+        if (!key) throw new AppError({code:"CONFLICT",message:"Configure Cloud.ru API key first"});
+        let response:Response;
+        try {response=await fetch("https://foundation-models.api.cloud.ru/v1/models",
+          {headers:{authorization:"Bearer "+key,accept:"application/json"},signal:AbortSignal.timeout(12000)});}
+        catch {throw new AppError({code:"EXTERNAL_SERVICE",message:"Cloud.ru model catalog unavailable"});}
+        if (!response.ok) throw new AppError({code:"EXTERNAL_SERVICE",message:"Cloud.ru models request failed (HTTP "+response.status+")"});
+        const body=await response.json() as {data?:Array<{id?:unknown;metadata?:{name?:unknown;type?:unknown}}>};
+        const models=(Array.isArray(body.data)?body.data:[])
+          .filter(m=>typeof m.id==="string" && /^[\\w./-]{2,150}$/.test(m.id))
+          .map(m=>({id:m.id,name:typeof m.metadata?.name==="string"?m.metadata.name:m.id,
+            type:typeof m.metadata?.type==="string"?m.metadata.type:null})).slice(0,150);
+        return JSON.stringify({models});
+      },
+      assistantSettings: async payload => {
+        const data=payload as {key?:unknown;removeKey?:unknown;settings?:unknown} | null;
+        if (!data||typeof data!=="object") throw new AppError({code:"VALIDATION",message:"Invalid settings request"});
+        if(data.key!==undefined&&data.removeKey===true)throw new AppError({code:"VALIDATION",message:"Conflicting key actions"});
+        if(data.key!==undefined){await brain.saveKey(data.key);localKey=await brain.readKey();}
+        if(data.removeKey===true){await brain.deleteKey();localKey=null;}
+        if(data.settings!==undefined)brainConfig=await brain.saveSettings(data.settings);
+        configureBrain();
+        return JSON.stringify({saved:true,configured:Boolean(cloudKey()),keyStored:Boolean(localKey),settings:brainConfig});
+      },
       assistantTurn: async (payload, context) => {
         const input = payload as {text?:unknown;sessionId?:unknown};
         if (!input || typeof input.text !== "string" || input.text.length > 8000 || (input.sessionId !== undefined && typeof input.sessionId !== "string"))
