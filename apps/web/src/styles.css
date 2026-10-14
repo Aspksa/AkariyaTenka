@@ -222,3 +222,8 @@ button{cursor:pointer}
 .akariya-git-stat strong{display:block;font-size:13px}
 .akariya-git-stat-value{font-size:18px;font-weight:700;overflow-wrap:anywhere;margin:8px 0}
 .akariya-git-stat small{color:var(--text-muted,#a99ca8);overflow-wrap:anywhere}
+
+.notification-settings{display:flex;flex-direction:column;gap:12px}
+.notification-settings[hidden]{display:none}
+.notification-setting{display:flex;align-items:center;gap:10px;font-size:14px;cursor:pointer}
+.notification-setting input{accent-color:var(--accent,#dc885b);width:16px;height:16px}
