@@ -31,7 +31,13 @@ async function main(): Promise<void> {
   const assistant = createAssistant(security.policy, security.approvals, storage.audit, clock, storage.assistant);
   const brain = new LocalBrainSettings(config.dataDir);
   let brainConfig = await brain.readSettings();
-  let localKey = await brain.readKey();
+  let localKey: string | null = null;
+  try { localKey = await brain.readKey(); }
+  catch (error) {
+    logger.error("Cloud.ru stored key could not be decrypted; assistant disabled until key is replaced", {
+      cause: error instanceof Error ? error.name : "unknown"
+    });
+  }
   const cloudKey = () => localKey || process.env.AKARIYA_CLOUDRU_API_KEY || null;
   function configureBrain():void {
     const key = cloudKey();
@@ -84,6 +90,7 @@ async function main(): Promise<void> {
         if (!response.ok) throw new AppError({code:"EXTERNAL_SERVICE",message:"Cloud.ru models request failed (HTTP "+response.status+")"});
         const body=await response.json() as {data?:Array<{id?:unknown;metadata?:{name?:unknown;type?:unknown}}>};
         const models=(Array.isArray(body.data)?body.data:[])
+          .filter((m): m is {id:string;metadata?:{name?:unknown;type?:unknown}} => !!m && typeof m==="object" && typeof m.id==="string")
           .filter(m=>typeof m.id==="string" && /^[\w./-]{2,150}$/.test(m.id))
           .map(m=>({id:m.id,name:typeof m.metadata?.name==="string"?m.metadata.name:m.id,
             type:typeof m.metadata?.type==="string"?m.metadata.type:null})).slice(0,150);
@@ -93,6 +100,20 @@ async function main(): Promise<void> {
         const data=payload as {key?:unknown;removeKey?:unknown;settings?:unknown} | null;
         if (!data||typeof data!=="object") throw new AppError({code:"VALIDATION",message:"Invalid settings request"});
         if(data.key!==undefined&&data.removeKey===true)throw new AppError({code:"VALIDATION",message:"Conflicting key actions"});
+        // Validate settings before touching credentials to avoid partial changes on malformed input.
+        if (data.settings !== undefined) {
+          const candidate = data.settings as Partial<BrainSettings> | null;
+          if (!candidate || typeof candidate.model !== "string" ||
+              !/^[\w./-]{2,150}$/.test(candidate.model) ||
+              typeof candidate.temperature !== "number" || !Number.isFinite(candidate.temperature) ||
+              candidate.temperature < 0 || candidate.temperature > 2 ||
+              typeof candidate.topP !== "number" || !Number.isFinite(candidate.topP) ||
+              candidate.topP <= 0 || candidate.topP > 1 ||
+              typeof candidate.maxCompletionTokens !== "number" ||
+              !Number.isInteger(candidate.maxCompletionTokens) ||
+              candidate.maxCompletionTokens < 64 || candidate.maxCompletionTokens > 16384)
+            throw new AppError({code:"VALIDATION",message:"Invalid brain settings"});
+        }
         if(data.key!==undefined){await brain.saveKey(data.key);localKey=await brain.readKey();}
         if(data.removeKey===true){await brain.deleteKey();localKey=null;}
         if(data.settings!==undefined)brainConfig=await brain.saveSettings(data.settings);
