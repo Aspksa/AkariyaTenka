@@ -14,8 +14,8 @@ export interface HttpRouteSet {
   readonly assistantSettings?: (payload:unknown) => Promise<string>;
   readonly performance?: (context: RequestContext) => Promise<string>;
   readonly githubUpdates?: () => Promise<string>;
-  readonly gitStatistics?: () => Promise<string>;
-  readonly deepStatistics?: () => Promise<string>;
+  /** «Жизнь проекта»: figures about the project's history; `force` recounts instead of using the cache. */
+  readonly projectStats?: (force: boolean) => Promise<string>;
   readonly githubUpdateHistory?: () => Promise<string>;
   readonly rollbackList?: () => Promise<string>;
   readonly rollbackRequest?: (payload: unknown) => Promise<string>;
@@ -188,15 +188,11 @@ export function createHttpApplication(
             response.end(body);
             return;
           }
-          if (request.method === "GET" && url.pathname === "/api/updates/statistics/deep" && routes.deepStatistics) {
-            const result=await routes.deepStatistics();
-            response.writeHead(200,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
-            response.end(result);return;
-          }
-          if (request.method === "GET" && url.pathname === "/api/updates/statistics" && routes.gitStatistics) {
-            const result = await routes.gitStatistics();
-            response.writeHead(200, {"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
-            response.end(result);return;
+          if (request.method === "GET" && url.pathname === "/api/updates/project-stats" && routes.projectStats) {
+            const body = await routes.projectStats(url.searchParams.get("force") === "1");
+            response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+            response.end(body);
+            return;
           }
           if (request.method === "GET" && url.pathname === "/api/updates/github" && routes.githubUpdates) {
             const body = await routes.githubUpdates();

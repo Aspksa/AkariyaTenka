@@ -1,4 +1,5 @@
 import { createIcon, type IconName } from "../components/icons.js";
+import { projectLifePanel } from "./project-life.js";
 import { updateOutcome, updateProgress, type UpdateEvent } from "./update-progress.js";
 type UpdateStatus = {
   repository: string; branch: string; current: string | null;
@@ -133,13 +134,8 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   const backups = block("update-card", rollbackTitle, rollbackList);
   const history = block("update-card", historyTitle, historyList);
   parent.classList.add("updates-page");
-  parent.append(summary, whatsNew, block("update-grid", backups, history));
-  // Analytics is its own module so the update flow above stays small and independent.
-  const insightsHost = document.createElement("div");
-  insightsHost.className = "insights-host";
-  parent.append(insightsHost);
-  void import("./project-insights.js").then(m => m.mountProjectInsights(insightsHost))
-    .catch(() => { insightsHost.textContent = "Не удалось загрузить аналитику проекта."; });
+  // As in JUUNIBI: the update centre on the left, «Жизнь проекта» in a column on the right.
+  parent.append(block("upd-layout", block("upd-main", summary, whatsNew, block("update-grid", backups, history)), projectLifePanel()));
   const snoozeKey = "akariya-update-snooze";
   function snoozed(sha: string): boolean {
     try {
