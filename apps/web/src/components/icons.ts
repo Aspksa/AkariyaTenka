@@ -1,6 +1,7 @@
 export type IconName = "home" | "activity" | "refresh" | "chevron-left" | "chevron-right" | "bell" | "settings" | "arrow-up" | "arrow-down" | "eye" | "eye-off" | "check" | "alert" | "info" | "arrow-right" | "shield" | "close"
  | "sprout" | "scissors" | "pen" | "file-plus" | "file-x" | "dumbbell" | "minimize" | "clock" | "flame" | "trending-up" | "palette" | "ruler" | "folder" | "book" | "database" | "crown" | "bang" | "dna" | "snowflake" | "orbit" | "branch" | "quote" | "gem" | "smile" | "tag" | "fossil" | "ghost" | "function" | "columns" | "type" | "upload" | "download" | "message" | "wind" | "brush" | "regex" | "package" | "radar" | "hash" | "flask" | "pause" | "check-circle" | "lifebuoy" | "archive" | "recycle" | "layers" | "microscope" | "history" | "chart" | "gauge" | "calendar" | "users" | "commit" | "sparkles" | "code" | "external" | "hard-drive" | "rocket" | "sun" | "moon" | "target"
- | "file" | "brain" | "pulse" | "puzzle" | "search" | "chevron-down" | "cloud";
+ | "file" | "brain" | "pulse" | "puzzle" | "search" | "chevron-down" | "cloud"
+ | "trash" | "volume" | "bell-off" | "monitor" | "check-all";
 const paths: Record<IconName, string[]> = {
   home: ["m3 10 9-7 9 7", "M5 9v12h14V9", "M9 21v-7h6v7"],
   activity: ["M22 12h-4l-3 9-6-18-3 9H2"],
@@ -86,7 +87,12 @@ const paths: Record<IconName, string[]> = {
   "puzzle": ["M19.4 15.4a2 2 0 1 0 0-2.8l-1.4-1.4V8a2 2 0 0 0-2-2h-3.2l-1.4-1.4a2 2 0 1 0-2.8 0L7.2 6H4a2 2 0 0 0-2 2v3.2l1.4 1.4a2 2 0 1 0 0 2.8L2 16.8V20a2 2 0 0 0 2 2h3.2l1.4-1.4a2 2 0 1 0 2.8 0l1.4 1.4H16a2 2 0 0 0 2-2v-3.2Z"],
   "search": ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16", "m21 21-4.3-4.3"],
   "chevron-down": ["m6 9 6 6 6-6"],
-  "cloud": ["M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9Z"]
+  "cloud": ["M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9Z"],
+  "trash": ["M3 6h18", "M8 6V4h8v2", "M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6", "M10 11v6", "M14 11v6"],
+  "volume": ["M11 5 6 9H2v6h4l5 4V5Z", "M15.5 8.5a5 5 0 0 1 0 7", "M19 5a10 10 0 0 1 0 14"],
+  "bell-off": ["M8.7 3A6 6 0 0 1 18 8c0 3 .5 5 1.2 6.5", "M17 17H3c0-2 3-2 3-9a6 6 0 0 1 .3-1.8", "M10 21h4", "m2 2 20 20"],
+  "monitor": ["M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z", "M8 21h8", "M12 17v4"],
+  "check-all": ["m2 12 4 4L16 6", "m11 15 1 1L22 6"]
 };
 /** Narrows untrusted strings (for example icon names sent by the server) to a known glyph. */
 export function isIconName(value: unknown): value is IconName {
