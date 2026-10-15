@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
-import {parseTasks,dueState} from "./dela.js";
-const sample={id:"test-1",title:"Подготовить выпуск",notes:"",status:"todo",priority:"high",due:"2026-10-20",createdAt:100,updatedAt:100};
+import {parseTasks,dueState,type Task} from "./dela.js";
+const sample:Task={id:"test-1",title:"Подготовить выпуск",notes:"",status:"todo",priority:"high",due:"2026-10-20",createdAt:100,updatedAt:100};
 describe("Дела",()=>{
  it("accepts valid tasks and rejects corrupt or duplicate records",()=>{
   expect(parseTasks([sample,{...sample,title:"Дубликат"},{...sample,id:"x",status:"bad"},{...sample,id:"y",title:""}])).toEqual([sample]);
