@@ -1,3 +1,4 @@
+import {buildDelaHtmlReport,type ReportAutomation} from "./dela-report.js";
 /** Local-first personal tasks. No network access or hidden automation. */
 export type TaskStatus="todo"|"doing"|"done";
 export type TaskPriority="low"|"normal"|"high";
@@ -47,7 +48,43 @@ export function mountDela(host:HTMLElement):void{
  const root=node("section","dela");
  const head=node("div","dela-head");
  const intro=node("div");intro.append(node("h3","","Дела"),node("p","","Задачи, планы и выполненная работа"));
- const stats=node("div","dela-stats");head.append(intro,stats);
+ const stats=node("div","dela-stats");
+ const download=node("button","dela-report-button");
+ download.type="button";download.title="Скачать HTML-отчёт";download.setAttribute("aria-label","Скачать HTML-отчёт о делах");
+ const icon=document.createElementNS("http://www.w3.org/2000/svg","svg");
+ icon.setAttribute("viewBox","0 0 24 24");icon.setAttribute("fill","none");icon.setAttribute("stroke","currentColor");
+ icon.setAttribute("stroke-width","1.8");icon.setAttribute("width","20");icon.setAttribute("height","20");icon.setAttribute("aria-hidden","true");
+ const outline=document.createElementNS("http://www.w3.org/2000/svg","path");
+ outline.setAttribute("d","M6 2h8l5 5v15H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 0v6h6M8 13h8M8 17h8");
+ icon.append(outline);download.append(icon);
+ const headActions=node("div","dela-head-actions");headActions.append(stats,download);head.append(intro,headActions);
+ download.addEventListener("click",()=>{
+  void (async()=>{
+   download.disabled=true;
+   try{
+    await writes;
+    const [response,automationResponse]=await Promise.all([
+     fetch("/api/dela",{cache:"no-store"}),fetch("/api/dela/automation",{cache:"no-store"})
+    ]);
+    if(!response.ok||!automationResponse.ok)throw Error("Серверный отчёт недоступен");
+    const data=await response.json() as {tasks?:unknown};
+    const automation=await automationResponse.json() as ReportAutomation;
+    const records=parseTasks(data.tasks);
+    if(!Array.isArray(data.tasks)||!Array.isArray(automation.events)||!Array.isArray(automation.rules))
+     throw Error("Неожиданный формат данных отчёта");
+    const html=buildDelaHtmlReport(records,automation);
+    const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const anchor=document.createElement("a");anchor.href=url;
+    const stamp=new Date().toISOString().slice(0,10);
+    anchor.download="akariya-dela-report-"+stamp+".html";
+    document.body.append(anchor);anchor.click();anchor.remove();
+    window.setTimeout(()=>URL.revokeObjectURL(url),60_000);
+    message.textContent="HTML-отчёт сформирован из сохранённых данных.";
+   }catch(e){message.textContent=e instanceof Error?e.message:"Не удалось сформировать отчёт.";}
+   finally{download.disabled=false;}
+  })();
+ });
  const form=node("form","dela-form");
  const title=node("input");title.placeholder="Новое дело…";title.required=true;title.maxLength=160;title.setAttribute("aria-label","Название дела");
  const notes=node("textarea");notes.placeholder="Описание или заметки";notes.maxLength=2000;notes.rows=2;notes.setAttribute("aria-label","Описание дела");
