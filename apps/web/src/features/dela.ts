@@ -61,10 +61,11 @@ export function mountDela(host:HTMLElement):void{
  const add=node("button","","Добавить дело");add.type="submit";
  const formFields=node("div","dela-form-fields");formFields.append(priority,due,repeat,add);form.append(title,notes,formFields);
  const toolbar=node("div","dela-toolbar");
+ const calendar=node("input");calendar.type="date";calendar.setAttribute("aria-label","Показать дела на дату");
  const filter=node("select");filter.setAttribute("aria-label","Фильтр дел");
  for(const [value,label] of [["all","Все"],["todo","Запланированы"],["doing","В работе"],["done","Выполнены"],["overdue","Просрочены"]] as const){const o=node("option","",label);o.value=value;filter.append(o);}
  const search=node("input");search.placeholder="Поиск по делам";search.setAttribute("aria-label","Поиск дел");
- toolbar.append(filter,search);
+ toolbar.append(filter,search,calendar);
  const list=node("div","dela-list");list.setAttribute("aria-live","polite");
  const message=node("p","dela-message");message.setAttribute("role","status");
  const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
@@ -73,7 +74,7 @@ export function mountDela(host:HTMLElement):void{
   const overdue=tasks.filter(x=>dueState(x,today())==="overdue").length;
   stats.textContent=tasks.length+" всего · "+complete+" готово · "+overdue+" просрочено";
   const q=search.value.trim().toLocaleLowerCase("ru-RU");
-  const visible=tasks.filter(t=>(filter.value==="all"||filter.value===t.status||(filter.value==="overdue"&&dueState(t,today())==="overdue"))&&
+  const visible=tasks.filter(t=>(!calendar.value||t.due===calendar.value)&&(filter.value==="all"||filter.value===t.status||(filter.value==="overdue"&&dueState(t,today())==="overdue"))&&
    (!q||t.title.toLocaleLowerCase("ru-RU").includes(q)||t.notes.toLocaleLowerCase("ru-RU").includes(q)))
    .sort((a,b)=>Number(a.status==="done")-Number(b.status==="done")||
     Number(b.priority==="high")-Number(a.priority==="high")||b.updatedAt-a.updatedAt);
@@ -143,6 +144,6 @@ export function mountDela(host:HTMLElement):void{
   upsert(task);message.textContent="Дело добавлено.";
   form.reset();draw();title.focus();
  });
- filter.addEventListener("change",draw);search.addEventListener("input",draw);
+ filter.addEventListener("change",draw);search.addEventListener("input",draw);calendar.addEventListener("change",draw);
  root.append(head,form,toolbar,message,list);host.append(root);draw();
 }
