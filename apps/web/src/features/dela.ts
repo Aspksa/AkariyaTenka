@@ -163,21 +163,4 @@ export function mountDela(host:HTMLElement):void{
   finally{add.disabled=false;}
  };
  void loadServer();
- const dueSeen=new Set<string>();
- async function checkDue():Promise<void>{
-  if(document.visibilityState!=="visible")return;
-  try{
-   const r=await fetch("/api/dela/due?today="+today(),{cache:"no-store",signal:AbortSignal.timeout(5000)});
-   if(!r.ok)return;
-   const body=await r.json() as {events?:{id:string;kind:"info"|"error";title:string;detail:string}[]};
-   for(const event of Array.isArray(body.events)?body.events:[]){
-    if(!event||typeof event.id!=="string"||dueSeen.has(event.id))continue;
-    dueSeen.add(event.id);
-    window.dispatchEvent(new CustomEvent("akariya-update-notice",{detail:event}));
-   }
-  }catch{/* Notification checks must not interrupt task entry */}
- }
- void checkDue();
- window.setInterval(()=>{if(root.isConnected)void checkDue();},60_000);
-
 }
