@@ -168,6 +168,7 @@ export function createHttpApplication(
             if(!sameOrigin)throw new AppError({code:"PERMISSION",message:"Local task API required",correlationId:id});
             let result:string;
             if(request.method==="GET"&&url.pathname==="/api/dela"&&routes.delaList)result=await routes.delaList();
+            else if(request.method==="GET"&&url.pathname==="/api/dela/automation"&&routes.delaAutomationList)result=await routes.delaAutomationList();
             else if(request.method==="GET"&&url.pathname==="/api/dela/due"&&routes.delaDue){
               const today=url.searchParams.get("today")??"";
               if(!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(today))throw new AppError({code:"VALIDATION",message:"Invalid local date",correlationId:id});
