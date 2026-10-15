@@ -1,7 +1,7 @@
 /** Local-first personal tasks. No network access or hidden automation. */
 export type TaskStatus="todo"|"doing"|"done";
 export type TaskPriority="low"|"normal"|"high";
-export interface Task {id:string;title:string;notes:string;status:TaskStatus;priority:TaskPriority;due:string;createdAt:number;updatedAt:number}
+export interface Task {id:string;title:string;notes:string;status:TaskStatus;priority:TaskPriority;due:string;createdAt:number;updatedAt:number;repeat?:"none"|"daily"|"weekly"|"monthly";subtasks?:{id:string;text:string;done:boolean}[]}
 const KEY="akariya-dela-v1";
 const statuses:TaskStatus[]=["todo","doing","done"];
 const priorities:TaskPriority[]=["low","normal","high"];
@@ -18,7 +18,7 @@ export function parseTasks(value:unknown):Task[]{
      typeof t.due!=="string"||(t.due!==""&&!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(t.due))||
      typeof t.createdAt!=="number"||!Number.isFinite(t.createdAt)||
      typeof t.updatedAt!=="number"||!Number.isFinite(t.updatedAt))continue;
-  ids.add(t.id);result.push(t as Task);
+  ids.add(t.id);result.push({...t,repeat:t.repeat??"none",subtasks:t.subtasks??[]} as Task);
   if(result.length>=500)break;
  }
  return result;
