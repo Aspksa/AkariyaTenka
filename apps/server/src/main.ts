@@ -90,7 +90,11 @@ async function main(): Promise<void> {
       delaAutomationList: async()=>JSON.stringify(await delaAutomation.snapshot()),
       delaAutomationChange: async payload=>JSON.stringify(await delaAutomation.setRule(payload)),
       delaChange: async payload=>JSON.stringify({tasks:await dela.change(payload)}),
-      delaDue: async today=>JSON.stringify({events:await dela.dueNotifications(today)}),
+      delaDue: async today=>{
+        const [events,state]=await Promise.all([dela.dueNotifications(today),delaAutomation.snapshot()]);
+        return JSON.stringify({events:events.filter(e=>state.rules.some(rule=>
+          rule.id===(e.kind==="error"?"overdue":"due")&&rule.enabled))});
+      },
       assistantStatus: async () => JSON.stringify({
         configured:Boolean(cloudKey() || (process.env.AKARIYA_AI_API_KEY && process.env.AKARIYA_AI_MODEL)),
         keyStored:Boolean(localKey), provider:cloudKey()?"Cloud.ru":"OpenAI-compatible",
