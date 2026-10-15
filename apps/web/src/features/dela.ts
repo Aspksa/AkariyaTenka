@@ -91,12 +91,29 @@ export function mountDela(host:HTMLElement):void{
     const o=node("option","",label);o.value=value;select.append(o);
    }
    select.value=task.status;
-   select.addEventListener("change",()=>{task.status=select.value as TaskStatus;task.updatedAt=Date.now();save();draw();});
+   select.addEventListener("change",()=>{
+    const wasDone=task.status==="done";
+    task.status=select.value as TaskStatus;task.updatedAt=Date.now();
+    if(!wasDone&&task.status==="done"&&task.repeat&&task.repeat!=="none"&&task.due&&tasks.length<500){
+     const d=new Date(task.due+"T12:00:00Z");
+     if(task.repeat==="daily")d.setUTCDate(d.getUTCDate()+1);
+     if(task.repeat==="weekly")d.setUTCDate(d.getUTCDate()+7);
+     if(task.repeat==="monthly"){
+      const day=d.getUTCDate();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()+1);
+      d.setUTCDate(Math.min(day,new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,0)).getUTCDate()));
+     }
+     const next:Task={...task,id:crypto.randomUUID(),due:d.toISOString().slice(0,10),
+       status:"todo",createdAt:Date.now(),updatedAt:Date.now(),
+       subtasks:(task.subtasks??[]).map(x=>({...x,done:false}))};
+     tasks.unshift(next);upsert(next);
+    }
+    upsert(task);draw();
+   });
    const dueLabel=node("span","dela-due",task.due?"До "+task.due:"Без срока");
    dueLabel.dataset.state=dueState(task,today());
    const remove=node("button","dela-remove","Удалить");remove.type="button";
    remove.setAttribute("aria-label","Удалить дело: "+task.title);
-   remove.addEventListener("click",()=>{if(!window.confirm("Удалить дело «"+task.title+"»?"))return;tasks=tasks.filter(t=>t.id!==task.id);save();draw();});
+   remove.addEventListener("click",()=>{if(!window.confirm("Удалить дело «"+task.title+"»?"))return;tasks=tasks.filter(t=>t.id!==task.id);deleteServer(task.id);draw();});
    bottom.append(select,dueLabel,remove);card.append(top,description,bottom);list.append(card);
   }
  }
