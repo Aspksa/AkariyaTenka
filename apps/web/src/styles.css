@@ -758,3 +758,39 @@ button{cursor:pointer}
 .dela-subtask-form button{padding:6px 12px;border-radius:8px;border:1px solid var(--accent-line);background:var(--accent-soft)}
 @media(max-width:700px){.dela-form-fields{grid-template-columns:1fr 1fr}.dela-toolbar{grid-template-columns:1fr}.dela-form-fields button{grid-column:1/-1}}
 @media(max-width:440px){.dela-form-fields{grid-template-columns:1fr}}
+
+/* «После обновления»: the column of what moved, the biggest steps first */
+.life-changes{position:relative;display:grid;gap:10px;padding:14px 14px 12px;border-radius:var(--r-xl);border:1px solid color-mix(in srgb,var(--brand) 35%,var(--line));background:radial-gradient(120% 100% at 0% 0%,color-mix(in srgb,var(--brand) 14%,transparent),transparent 60%),radial-gradient(90% 80% at 100% 100%,color-mix(in srgb,#6fcf97 10%,transparent),transparent 70%),var(--surface);overflow:hidden;animation:life-rise .5s ease both}
+.life-changes::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 35%,color-mix(in srgb,#fff 6%,transparent) 50%,transparent 65%);background-size:250% 100%;animation:life-sheen 5s ease-in-out infinite}
+.life-changes-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.life-changes-head strong{display:block;font-size:var(--fs-base);letter-spacing:-.01em}
+.life-changes-head small{display:block;margin-top:1px;color:var(--muted);font-size:var(--fs-xs);line-height:1.35}
+.life-changes-tally{display:flex;gap:4px;flex:none}
+.life-changes-tally span{padding:2px 8px;border-radius:999px;font-size:var(--fs-xs);font-weight:700;font-variant-numeric:tabular-nums;background:color-mix(in srgb,var(--q) 15%,transparent);color:var(--q)}
+.life-changes .tone-good,.life-change-row.tone-good{--q:#6fcf97}.life-changes .tone-bad,.life-change-row.tone-bad{--q:#f87171}.life-changes .tone-neutral,.life-change-row.tone-neutral{--q:#d9a441}
+.panel-body .life .life-changes-list{display:grid;gap:4px;margin:0;padding:0;list-style:none}
+.panel-body .life .life-changes-list li{padding:0;background:none}
+.life-change-row{--q:#d9a441;position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:9px;width:100%;padding:8px 10px 8px 12px;border:0;border-radius:var(--r-md);background:color-mix(in srgb,var(--fg) 3%,transparent);color:var(--fg);text-align:left;cursor:pointer;overflow:hidden;transition:background var(--dur-fast),transform var(--dur-fast);animation:life-change-in .45s cubic-bezier(.2,.9,.3,1) calc(var(--i) * 60ms + .1s) both}
+.life-change-row::before{content:"";position:absolute;left:0;top:7px;bottom:7px;width:3px;border-radius:0 3px 3px 0;background:var(--q);box-shadow:0 0 10px var(--q)}
+.life-change-row:hover,.life-change-row:focus-visible{background:color-mix(in srgb,var(--q) 11%,transparent);transform:translateX(3px);outline:none}
+@keyframes life-change-in{from{opacity:0;transform:translateX(-10px)}}
+.life-change-emoji{font-size:var(--fs-base);line-height:1}
+.life-change-name{display:flex;flex-direction:column;min-width:0}
+.life-change-name b{font-size:var(--fs-sm);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.life-change-name small{font-size:.68rem;color:var(--g,var(--muted));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.life-change-name small.g-anatomy{--g:#e0a43a}.life-change-name small.g-mind{--g:#8b6cff}.life-change-name small.g-life{--g:#3fbf87}.life-change-name small.g-care{--g:#3ea6ff}.life-change-name small.g-fun{--g:#ff6fa8}.life-change-name small.g-code{--g:#22b5c4}
+.life-change-values{display:flex;align-items:baseline;gap:5px;font-size:var(--fs-xs);font-variant-numeric:tabular-nums;white-space:nowrap}
+.life-change-values s{color:var(--muted);text-decoration-color:color-mix(in srgb,var(--q) 60%,transparent)}
+.life-change-values span{color:var(--muted)}
+.life-change-values b{color:var(--fg);font-weight:600}
+.life-change-delta{min-width:52px;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--q) 16%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--q) 40%,transparent);color:var(--q);font-size:var(--fs-xs);font-weight:700;text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap}
+.panel-body .life .life-changes-more{justify-self:center;padding:5px 12px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--muted);font-size:var(--fs-xs);font-weight:600}
+.panel-body .life .life-changes-more:hover{border-color:var(--brand);color:var(--fg)}
+/* the group says how many of its figures moved, even when folded */
+.life-group-changed{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;background:color-mix(in srgb,var(--brand) 16%,transparent);color:var(--brand);font-size:var(--fs-xs);font-weight:700}
+.life-group-changed i{width:6px;height:6px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 0 color-mix(in srgb,var(--brand) 60%,transparent);animation:life-ping 2.2s ease-out infinite}
+.life-group.has-changes:not([open]){border-color:color-mix(in srgb,var(--brand) 35%,var(--line))}
+.life-tile.flash{animation:life-flash 1.6s ease both}
+@keyframes life-flash{0%,100%{box-shadow:0 10px 30px -18px var(--q,var(--brand))}25%,60%{box-shadow:0 0 0 3px var(--q,var(--brand)),0 0 30px var(--q,var(--brand))}}
+@media(max-width:520px){.life-change-row{grid-template-columns:auto minmax(0,1fr) auto}.life-change-values{grid-column:2;grid-row:2}.life-change-delta{grid-row:1/3;grid-column:3}}
+@media(prefers-reduced-motion:reduce){.life-changes,.life-changes::after,.life-change-row,.life-group-changed i,.life-tile.flash{animation:none!important}}

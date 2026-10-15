@@ -13,6 +13,7 @@ import { cleanSnapshots, compareWithPrevious, type MetricChange, type Snapshot }
 
 export const STATS_URL = "https://raw.githubusercontent.com/Aspksa/AkariyaTenka/stats/project-stats.json";
 const LOCAL_TTL = 10 * 60_000, REMOTE_TTL = 60 * 60_000;
+const SHA = /^[0-9a-f]{40}$/;
 
 export interface Metric {
   id: string; group: string; emoji: string; title: string; hint: string; value: string; detail: string;
@@ -64,7 +65,7 @@ export function cleanStats(raw: unknown): ProjectStatsData | null {
 }
 
 export class ProjectStats {
-  private cache: { at: number; data: ProjectStatsData } | null = null;
+  private cache: { at: number; data: ProjectStatsData; local: boolean } | null = null;
   private pending: Promise<ProjectStatsData> | null = null;
   constructor(private readonly root: string, private readonly dataDir: string,
     private readonly runtime: () => Promise<RuntimeFigures> = async () => ({}),
@@ -72,20 +73,40 @@ export class ProjectStats {
 
   private get saved(): string { return path.join(this.dataDir, "project-stats.json"); }
 
-  async get(force = false): Promise<ProjectStatsData> {
-    const local = existsSync(path.join(this.root, ".git"));
-    if (!force && this.cache && Date.now() - this.cache.at < (local ? LOCAL_TTL : REMOTE_TTL)) return this.withRuntime(this.cache.data);
-    this.pending ??= (local ? this.fromGit() : this.fromGitHub()).finally(() => { this.pending = null; });
-    const data = await this.pending;
-    this.cache = { at: Date.now(), data };
-    return this.withRuntime(data);
+  /** The version the updater installed (`.akariya-version`), or null for a plain checkout. */
+  private async installed(): Promise<string | null> {
+    try { const v = (await readFile(path.join(this.root, ".akariya-version"), "utf8")).trim().toLowerCase(); return SHA.test(v) ? v : null; }
+    catch { return null; }
+  }
+  private gitHead(): Promise<string | null> {
+    return new Promise((resolve) => execFile("git", ["-C", this.root, "rev-parse", "HEAD"], { timeout: 5000, windowsHide: true },
+      (err, out) => resolve(err ? null : (SHA.test(out.trim()) ? out.trim().toLowerCase() : null))));
+  }
+  /**
+   * The local history counts only when it is the version that runs. The updater never touches `.git`, so a
+   * folder that started as a clone keeps the history of its first version: then GitHub's figures are the true ones.
+   */
+  private async useLocalHistory(installed: string | null): Promise<boolean> {
+    if (!existsSync(path.join(this.root, ".git"))) return false;
+    return installed === null || installed === await this.gitHead();
   }
 
-  private async withRuntime(data: ProjectStatsData): Promise<ProjectStatsData> {
+  async get(force = false): Promise<ProjectStatsData> {
+    const installed = await this.installed();
+    const local = await this.useLocalHistory(installed);
+    if (!force && this.cache && this.cache.local === local && Date.now() - this.cache.at < (local ? LOCAL_TTL : REMOTE_TTL)) return this.withRuntime(this.cache.data, installed);
+    this.pending ??= (local ? this.fromGit() : this.fromGitHub()).finally(() => { this.pending = null; });
+    const data = await this.pending;
+    this.cache = { at: Date.now(), data, local };
+    return this.withRuntime(data, installed);
+  }
+
+  private async withRuntime(data: ProjectStatsData, installed: string | null): Promise<ProjectStatsData> {
     let extra: RuntimeFigures = {};
     try { extra = await this.runtime(); } catch { /* the figures from history are still worth showing */ }
     const merged = { ...data, metrics: data.metrics.map((m) => (extra[m.id] ? { ...m, ...extra[m.id], detail: extra[m.id]!.detail ?? m.detail } : m)) };
-    return this.withChanges(merged);
+    // versions are told apart by what is installed; the figures' own head may lag behind or run ahead of it
+    return this.withChanges(installed ? { ...merged, head: installed } : merged);
   }
 
   private get snapshotsFile(): string { return path.join(this.dataDir, "project-stats-snapshots.json"); }

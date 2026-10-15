@@ -1,4 +1,5 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -55,4 +56,24 @@ describe("что изменилось после обновления", () => {
     expect(after.since?.head).toBe("a");
     expect(after.metrics[0]!.change).toMatchObject({ from: 94, to: 103 });
   });
+  it("compares installed versions even when the folder started as a git clone", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "akariya-clone-"));
+    execFileSync("git", ["-C", dir, "init", "-q"]);
+    execFileSync("git", ["-C", dir, "-c", "user.name=Fox", "-c", "user.email=fox@example.invalid", "commit", "-q", "--allow-empty", "-m", "first"]);
+    let current = stats("stats-head", { tests: "94" });
+    let calls = 0;
+    const github = (async () => { calls++; return new Response(JSON.stringify(current)); }) as unknown as typeof fetch;
+    const one = "1".repeat(40), two = "2".repeat(40);
+    await writeFile(path.join(dir, ".akariya-version"), one + "\n");
+    const first = await new ProjectStats(dir, path.join(dir, "data"), undefined, github).get();
+    expect(first.source).toBe("github"); // the stale clone history is not used
+    expect(first.head).toBe(one);
+    current = stats("stats-head-2", { tests: "103" });
+    await writeFile(path.join(dir, ".akariya-version"), two + "\n");
+    const second = await new ProjectStats(dir, path.join(dir, "data"), undefined, github).get();
+    expect(second.since?.head).toBe(one);
+    expect(second.metrics[0]!.change).toMatchObject({ from: 94, to: 103 });
+    expect(calls).toBe(2);
+  });
 });
+
