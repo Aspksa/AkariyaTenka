@@ -54,8 +54,12 @@ export function mountDela(host:HTMLElement):void{
  const priority=node("select");priority.setAttribute("aria-label","Приоритет");
  for(const [value,label] of [["normal","Обычный"],["high","Высокий"],["low","Низкий"]] as const){const o=node("option","",label);o.value=value;priority.append(o);}
  const due=node("input");due.type="date";due.setAttribute("aria-label","Срок выполнения");
+ const repeat=node("select");repeat.setAttribute("aria-label","Повторение дела");
+ for(const [value,label] of [["none","Не повторять"],["daily","Каждый день"],["weekly","Каждую неделю"],["monthly","Каждый месяц"]] as const){
+  const option=node("option","",label);option.value=value;repeat.append(option);
+ }
  const add=node("button","","Добавить дело");add.type="submit";
- const formFields=node("div","dela-form-fields");formFields.append(priority,due,add);form.append(title,notes,formFields);
+ const formFields=node("div","dela-form-fields");formFields.append(priority,due,repeat,add);form.append(title,notes,formFields);
  const toolbar=node("div","dela-toolbar");
  const filter=node("select");filter.setAttribute("aria-label","Фильтр дел");
  for(const [value,label] of [["all","Все"],["todo","Запланированы"],["doing","В работе"],["done","Выполнены"],["overdue","Просрочены"]] as const){const o=node("option","",label);o.value=value;filter.append(o);}
@@ -102,9 +106,9 @@ export function mountDela(host:HTMLElement):void{
   const value=title.value.trim();
   if(!value){title.focus();return;}
   const now=Date.now();
-  const task:Task={id:crypto.randomUUID(),title:value,notes:notes.value.trim(),status:"todo",priority:priority.value as TaskPriority,due:due.value,createdAt:now,updatedAt:now};
+  const task:Task={id:crypto.randomUUID(),title:value,notes:notes.value.trim(),status:"todo",priority:priority.value as TaskPriority,due:due.value,createdAt:now,updatedAt:now,repeat:repeat.value as Task["repeat"],subtasks:[]};
   tasks.unshift(task);
-  message.textContent=save()?"Дело добавлено.":"Дело добавлено, но сохранить его в браузере не удалось.";
+  upsert(task);message.textContent="Дело добавлено.";
   form.reset();draw();title.focus();
  });
  filter.addEventListener("change",draw);search.addEventListener("input",draw);
