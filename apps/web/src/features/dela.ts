@@ -148,7 +148,7 @@ export function mountDela(host:HTMLElement):void{
   const value=title.value.trim();
   if(!value){title.focus();return;}
   const now=Date.now();
-  const task:Task={id:crypto.randomUUID(),title:value,notes:notes.value.trim(),status:"todo",priority:priority.value as TaskPriority,due:due.value,createdAt:now,updatedAt:now,repeat:repeat.value as Task["repeat"],subtasks:[]};
+  const task:Task={id:crypto.randomUUID(),title:value,notes:notes.value.trim(),status:"todo",priority:priority.value as TaskPriority,due:due.value,createdAt:now,updatedAt:now,repeat:repeat.value as NonNullable<Task["repeat"]>,subtasks:[]};
   tasks.unshift(task);
   upsert(task);message.textContent="Дело добавлено.";
   form.reset();draw();title.focus();
