@@ -113,7 +113,31 @@ export function mountDela(host:HTMLElement):void{
  const list=node("div","dela-list");list.setAttribute("aria-live","polite");
  const message=node("p","dela-message");message.setAttribute("role","status");
  const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
+ function drawMonth():void{
+  const now=new Date();const first=new Date(now.getFullYear(),now.getMonth()+monthOffset,1);
+  const year=first.getFullYear(),month=first.getMonth();
+  monthTitle.textContent=first.toLocaleDateString("ru-RU",{month:"long",year:"numeric"});
+  monthGrid.replaceChildren();
+  for(const day of ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"])monthGrid.append(node("span","dela-weekday",day));
+  const blanks=(first.getDay()+6)%7;
+  for(let i=0;i<blanks;i++)monthGrid.append(node("span","dela-day-empty"));
+  const days=new Date(year,month+1,0).getDate();
+  for(let n=1;n<=days;n++){
+   const iso=[year,String(month+1).padStart(2,"0"),String(n).padStart(2,"0")].join("-");
+   const total=tasks.filter(t=>t.due===iso).length;
+   const button=node("button","dela-day"+(calendar.value===iso?" selected":""));
+   button.type="button";button.append(node("span","",String(n)));
+   if(total)button.append(node("small","",String(total)));
+   button.title=iso+": "+total+" дел";button.setAttribute("aria-label",iso+", дел: "+total);
+   button.addEventListener("click",()=>{calendar.value=iso;draw();});
+   monthGrid.append(button);
+  }
+ }
+ previous.addEventListener("click",()=>{monthOffset--;drawMonth();});
+ next.addEventListener("click",()=>{monthOffset++;drawMonth();});
+ clearDay.addEventListener("click",()=>{calendar.value="";draw();});
  function draw():void{
+  drawMonth();
   const complete=tasks.filter(x=>x.status==="done").length;
   const overdue=tasks.filter(x=>dueState(x,today())==="overdue").length;
   stats.textContent=tasks.length+" всего · "+complete+" готово · "+overdue+" просрочено";
@@ -198,7 +222,7 @@ export function mountDela(host:HTMLElement):void{
   form.reset();draw();title.focus();
  });
  filter.addEventListener("change",draw);search.addEventListener("input",draw);calendar.addEventListener("change",draw);
- root.append(head,form,toolbar,message,list);host.append(root);draw();
+ root.append(head,form,calendarView,toolbar,message,list,automation);host.append(root);draw();void loadAutomation();
  const loadServer=async():Promise<void>=>{
   add.disabled=true;
   try{
