@@ -114,7 +114,22 @@ export function mountDela(host:HTMLElement):void{
    const remove=node("button","dela-remove","Удалить");remove.type="button";
    remove.setAttribute("aria-label","Удалить дело: "+task.title);
    remove.addEventListener("click",()=>{if(!window.confirm("Удалить дело «"+task.title+"»?"))return;tasks=tasks.filter(t=>t.id!==task.id);deleteServer(task.id);draw();});
-   bottom.append(select,dueLabel,remove);card.append(top,description,bottom);list.append(card);
+   const subtasks=node("div","dela-subtasks");
+   for(const step of task.subtasks??[]){
+    const label=node("label","dela-subtask");const checkbox=node("input");checkbox.type="checkbox";checkbox.checked=step.done;
+    checkbox.addEventListener("change",()=>{step.done=checkbox.checked;task.updatedAt=Date.now();upsert(task);draw();});
+    label.append(checkbox,node("span","",step.text));subtasks.append(label);
+   }
+   const subForm=node("form","dela-subtask-form");
+   const subInput=node("input");subInput.placeholder="Добавить подзадачу";subInput.maxLength=160;subInput.setAttribute("aria-label","Новая подзадача: "+task.title);
+   const subAdd=node("button","","+");subAdd.type="submit";subAdd.setAttribute("aria-label","Добавить подзадачу");
+   subForm.append(subInput,subAdd);
+   subForm.addEventListener("submit",event=>{
+    event.preventDefault();const value=subInput.value.trim();if(!value||value.length>160||(task.subtasks??[]).length>=40)return;
+    task.subtasks??=[];task.subtasks.push({id:crypto.randomUUID(),text:value,done:false});
+    task.updatedAt=Date.now();upsert(task);draw();
+   });
+   bottom.append(select,dueLabel,remove);card.append(top,description,subtasks,subForm,bottom);list.append(card);
   }
  }
  form.addEventListener("submit",event=>{
