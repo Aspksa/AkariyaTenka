@@ -205,6 +205,24 @@ export function createHomeView():HomeView {
  void reconcileUpdateOutcome();
  window.setInterval(()=>{if(document.visibilityState==="visible")void reconcileUpdateOutcome();},15000);
 
+ // Deadline reminders stay active across every section, not just the Дела page.
+ async function checkTaskDeadlines():Promise<void>{
+  if(document.visibilityState!=="visible")return;
+  try{
+   const now=new Date();
+   const today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,"0"),String(now.getDate()).padStart(2,"0")].join("-");
+   const r=await fetch("/api/dela/due?today="+today,{cache:"no-store",signal:AbortSignal.timeout(5000)});
+   if(!r.ok)return;
+   const body=await r.json() as {events?:{id:string;kind:"info"|"error";title:string;detail:string}[]};
+   for(const event of Array.isArray(body.events)?body.events:[]){
+    if(!event||typeof event.id!=="string"||!/^dela:[a-zA-Z0-9-]+:[0-9-]+$/.test(event.id))continue;
+    notifications.notify(event);
+   }
+  }catch{/* Never block the UI if tasks are temporarily unavailable */}
+ }
+ void checkTaskDeadlines();
+ window.setInterval(()=>{void checkTaskDeadlines();},60_000);
+ document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")void checkTaskDeadlines();});
  // Watch for updates in the background and surface them through the notification bell.
  async function checkForUpdates():Promise<void> {
   if(document.visibilityState!=="visible")return;
