@@ -15,7 +15,7 @@ export function parseTasks(value:unknown):Task[]{
      typeof t.title!=="string"||!t.title.trim()||t.title.length>160||
      typeof t.notes!=="string"||t.notes.length>2000||
      !statuses.includes(t.status as TaskStatus)||!priorities.includes(t.priority as TaskPriority)||
-     typeof t.due!=="string"||(t.due!==""&&!/^\\d{4}-\\d{2}-\\d{2}$/.test(t.due))||
+     typeof t.due!=="string"||(t.due!==""&&!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(t.due))||
      typeof t.createdAt!=="number"||!Number.isFinite(t.createdAt)||
      typeof t.updatedAt!=="number"||!Number.isFinite(t.updatedAt))continue;
   ids.add(t.id);result.push(t as Task);
