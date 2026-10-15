@@ -4,15 +4,19 @@
  */
 import { createIcon, type IconName } from "../components/icons.js";
 import { barChart, el, miniChart, ringChart } from "./life-charts.js";
+import { decorateChange, type MetricChange } from "./life-change.js";
 
 export interface ProjectMetric {
   id: string; group: string; emoji: string; title: string; hint: string; value: string; detail: string;
   kind?: string; series?: number[]; list?: string[]; labels?: string[]; ring?: number;
+  /** Set when the figure differs from the version installed before this one. */
+  change?: MetricChange;
 }
 export interface ProjectStatsData {
   version: 1; generatedAt: string; head: string; commits: number;
   groups: { id: string; title: string }[]; metrics: ProjectMetric[];
   source?: "git" | "github" | "saved";
+  since?: { head: string; at: string };
 }
 
 const OPEN_KEY = "akariya.life.open";
@@ -66,13 +70,16 @@ function tile(m: ProjectMetric, i: number): HTMLElement {
     : null;
   const mini = wide || empty ? null : miniChart(m.kind, m.series, m.labels, m.list);
   const ring = typeof m.ring === "number" && !empty ? ringChart(m.ring) : null;
-  const t = el("article", { cls: "life-tile" + (wide ? " wide" : "") + (empty ? " empty" : ""), title: m.hint, attrs: { tabindex: "0" } },
+  const t = el("article", { cls: "life-tile" + (wide ? " wide" : "") + (empty ? " empty" : ""), title: m.hint, attrs: { tabindex: "0" } });
+  const changed = m.change && !empty ? decorateChange(t, m.id, m.value, m.change, data?.since?.head.slice(0, 7) ?? null) : null;
+  t.append(...[
     el("div", { cls: "life-tile-top" }, el("span", { cls: "life-emoji", attrs: { "aria-hidden": "true" }, textContent: m.emoji }),
       el("div", { cls: "life-tile-name" }, el("strong", { textContent: m.title }), el("small", { textContent: m.hint }))),
-    el("div", { cls: "life-value-row" }, el("div", { cls: "life-value", textContent: m.value }), ring),
+    el("div", { cls: "life-value-row" }, changed?.value ?? el("div", { cls: "life-value", textContent: m.value }), changed?.badge, ring),
+    changed?.compare,
     m.detail ? el("p", { cls: "life-detail", textContent: m.detail }) : null,
     mini ? el("div", { cls: "life-mini" }, mini) : null,
-    wide);
+    wide].filter((x): x is HTMLElement => !!x));
   t.style.setProperty("--i", String(i));
   return t;
 }
@@ -85,7 +92,9 @@ function render(): void {
   const src = data?.source === "git" ? "по истории git" : data?.source === "github" ? "с GitHub" : data?.source === "saved" ? "сохранённая копия" : "";
   const head = el("header", { cls: "life-head" },
     el("div", { cls: "life-head-text" }, el("h2", {}, el("span", { cls: "life-pulse", attrs: { "aria-hidden": "true" } }), "Жизнь проекта"),
-      el("p", { textContent: data ? [`${data.commits.toLocaleString("ru-RU")} коммитов`, agoText(data.generatedAt), src].filter(Boolean).join(" · ") : "Необычные показатели Akariya" })),
+      el("p", { textContent: data ? [`${data.commits.toLocaleString("ru-RU")} коммитов`, agoText(data.generatedAt), src].filter(Boolean).join(" · ") : "Необычные показатели Akariya" }),
+      data?.since ? el("p", { cls: "life-since" }, el("span", { cls: "life-since-dot", attrs: { "aria-hidden": "true" } }),
+        `Изменилось после версии ${data.since.head.slice(0, 7)}: ${data.metrics.filter((m) => m.change).length}`) : null),
     refresh);
   if (!data) {
     host.replaceChildren(head, error
