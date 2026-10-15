@@ -130,7 +130,16 @@ export function mountDela(host:HTMLElement):void{
     task.subtasks??=[];task.subtasks.push({id:crypto.randomUUID(),text:value,done:false});
     task.updatedAt=Date.now();upsert(task);draw();
    });
-   bottom.append(select,dueLabel,remove);card.append(top,description,subtasks,subForm,bottom);list.append(card);
+   const ask=node("button","dela-consult","Спросить Akariya");
+   ask.type="button";
+   ask.addEventListener("click",()=>{
+    const draft="Помоги составить безопасный план выполнения дела: "+task.title+
+     (task.notes?"\\nОписание: "+task.notes:"")+
+     (task.due?"\\nСрок: "+task.due:"")+
+     "\\nПредложи последовательные шаги. Ничего не меняй без моего подтверждения.";
+    window.dispatchEvent(new CustomEvent("akariya-dela-consult",{detail:draft.slice(0,3000)}));
+   });
+   bottom.append(select,dueLabel,ask,remove);card.append(top,description,subtasks,subForm,bottom);list.append(card);
   }
  }
  form.addEventListener("submit",event=>{
