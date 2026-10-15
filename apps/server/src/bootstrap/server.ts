@@ -10,6 +10,8 @@ export interface HttpRouteSet {
   readonly health: (context: RequestContext) => Promise<string>;
   readonly assistantStatus?: () => Promise<string>;
   readonly delaList?: () => Promise<string>;
+  readonly delaAutomationList?: () => Promise<string>;
+  readonly delaAutomationChange?: (payload:unknown) => Promise<string>;
   readonly delaChange?: (payload:unknown) => Promise<string>;
   readonly delaDue?: (today:string) => Promise<string>;
   readonly assistantTurn?: (payload: unknown, context: RequestContext) => Promise<string>;
