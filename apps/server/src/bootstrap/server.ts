@@ -10,6 +10,8 @@ export interface HttpRouteSet {
   readonly health: (context: RequestContext) => Promise<string>;
   readonly assistantStatus?: () => Promise<string>;
   readonly delaList?: () => Promise<string>;
+  readonly delaAutomationList?: () => Promise<string>;
+  readonly delaAutomationChange?: (payload:unknown) => Promise<string>;
   readonly delaChange?: (payload:unknown) => Promise<string>;
   readonly delaDue?: (today:string) => Promise<string>;
   readonly assistantTurn?: (payload: unknown, context: RequestContext) => Promise<string>;
@@ -166,11 +168,12 @@ export function createHttpApplication(
             if(!sameOrigin)throw new AppError({code:"PERMISSION",message:"Local task API required",correlationId:id});
             let result:string;
             if(request.method==="GET"&&url.pathname==="/api/dela"&&routes.delaList)result=await routes.delaList();
+            else if(request.method==="GET"&&url.pathname==="/api/dela/automation"&&routes.delaAutomationList)result=await routes.delaAutomationList();
             else if(request.method==="GET"&&url.pathname==="/api/dela/due"&&routes.delaDue){
               const today=url.searchParams.get("today")??"";
               if(!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(today))throw new AppError({code:"VALIDATION",message:"Invalid local date",correlationId:id});
               result=await routes.delaDue(today);
-            }else if(request.method==="POST"&&url.pathname==="/api/dela"&&routes.delaChange){
+            }else if(request.method==="POST"&&(url.pathname==="/api/dela"||url.pathname==="/api/dela/automation")&&(routes.delaChange||routes.delaAutomationChange)){
               if(request.headers.origin!=="http://127.0.0.1:"+config.port||
                  request.headers["content-type"]?.split(";")[0]?.trim()!=="application/json")
                 throw new AppError({code:"PERMISSION",message:"Local task mutation origin required",correlationId:id});
@@ -180,7 +183,7 @@ export function createHttpApplication(
               let payload:unknown;
               try{payload=JSON.parse(Buffer.concat(parts).toString("utf8"));}
               catch{throw new AppError({code:"VALIDATION",message:"Invalid task JSON",correlationId:id});}
-              result=await routes.delaChange(payload);
+              result=url.pathname==="/api/dela/automation"?await routes.delaAutomationChange!(payload):await routes.delaChange!(payload);
             }else throw new AppError({code:"NOT_FOUND",message:"Task API route not found",correlationId:id});
             response.writeHead(200,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
             response.end(result);return;

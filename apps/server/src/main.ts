@@ -16,6 +16,7 @@ import { createPerformanceRoute } from "./routes/performance.js";
 import { createGithubUpdateRoute } from "./routes/github-updates.js";
 import { ProjectStats, recordStartup } from "./services/project-stats.js";
 import { DelaStore } from "./services/dela-store.js";
+import { DelaAutomation } from "./services/dela-automation.js";
 import { MEMORY_LIST_CAP, updaterFigures } from "./services/updater-figures.js";
 import { createGithubUpdateHistoryRoute } from "./routes/github-update-history.js";
 import { createGithubUpdateRequest } from "./routes/github-update-request.js";
@@ -34,6 +35,12 @@ async function main(): Promise<void> {
   const assistant = createAssistant(security.policy, security.approvals, storage.audit, clock, storage.assistant);
   const dela=new DelaStore(config.dataDir);
   await dela.init();
+  const delaAutomation=new DelaAutomation(config.dataDir,dela);
+  await delaAutomation.init();
+  const localDate=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
+  const automationTimer=setInterval(()=>{void delaAutomation.tick(localDate()).catch(e=>logger.error("Dela scheduler failed",{message:String(e)}));},60_000);
+  automationTimer.unref();
+  void delaAutomation.tick(localDate()).catch(e=>logger.error("Dela initial check failed",{message:String(e)}));
   const brain = new LocalBrainSettings(config.dataDir);
   let brainConfig = await brain.readSettings();
   let localKey = await brain.readKey();
@@ -80,8 +87,14 @@ async function main(): Promise<void> {
     {
       health: createHealthRoute(health),
       delaList: async()=>JSON.stringify({tasks:await dela.list()}),
+      delaAutomationList: async()=>JSON.stringify(await delaAutomation.snapshot()),
+      delaAutomationChange: async payload=>JSON.stringify(await delaAutomation.setRule(payload)),
       delaChange: async payload=>JSON.stringify({tasks:await dela.change(payload)}),
-      delaDue: async today=>JSON.stringify({events:await dela.dueNotifications(today)}),
+      delaDue: async today=>{
+        const [events,state]=await Promise.all([dela.dueNotifications(today),delaAutomation.snapshot()]);
+        return JSON.stringify({events:events.filter(e=>state.rules.some(rule=>
+          rule.id===(e.kind==="error"?"overdue":"due")&&rule.enabled))});
+      },
       assistantStatus: async () => JSON.stringify({
         configured:Boolean(cloudKey() || (process.env.AKARIYA_AI_API_KEY && process.env.AKARIYA_AI_MODEL)),
         keyStored:Boolean(localKey), provider:cloudKey()?"Cloud.ru":"OpenAI-compatible",
@@ -156,7 +169,7 @@ async function main(): Promise<void> {
     logger,
     config.shutdownTimeoutMs,
     {
-      closeHttp: () => new Promise<void>((resolve) => server.close(() => resolve())),
+      closeHttp: () => new Promise<void>((resolve) => {clearInterval(automationTimer);server.close(() => resolve());}),
       stopRuntime: () => modules.kernel.stop(),
       flushPersistence: async () => {
         await Promise.all([

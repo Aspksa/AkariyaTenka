@@ -66,10 +66,78 @@ export function mountDela(host:HTMLElement):void{
  for(const [value,label] of [["all","Все"],["todo","Запланированы"],["doing","В работе"],["done","Выполнены"],["overdue","Просрочены"]] as const){const o=node("option","",label);o.value=value;filter.append(o);}
  const search=node("input");search.placeholder="Поиск по делам";search.setAttribute("aria-label","Поиск дел");
  toolbar.append(filter,search,calendar);
+ const calendarView=node("section","dela-month");
+ const monthBar=node("div","dela-month-bar");const monthTitle=node("strong");
+ let monthOffset=0;
+ const previous=node("button","","‹");previous.type="button";previous.setAttribute("aria-label","Предыдущий месяц");
+ const next=node("button","","›");next.type="button";next.setAttribute("aria-label","Следующий месяц");
+ const clearDay=node("button","","Все даты");clearDay.type="button";
+ monthBar.append(previous,monthTitle,next,clearDay);
+ const monthGrid=node("div","dela-month-grid");
+ calendarView.append(monthBar,monthGrid);
+ const automation=node("section","dela-automation");
+ const automationTitle=node("h3","","Автоматизация");
+ const automationHelp=node("p","","Проверка сервером каждую минуту. События сохраняются между запусками.");
+ const rulesBox=node("div","dela-rules");
+ const journal=node("div","dela-journal");journal.setAttribute("aria-label","Журнал автоматизации");
+ automation.append(automationTitle,automationHelp,rulesBox,node("h4","","Журнал срабатываний"),journal);
+ async function loadAutomation():Promise<void>{
+  try{
+   const response=await fetch("/api/dela/automation",{cache:"no-store"});
+   if(!response.ok)throw Error("HTTP "+response.status);
+   const data=await response.json() as {
+    rules?:{id:"due"|"overdue";enabled:boolean}[];
+    events?:{id:string;at:string;date:string;title:string;rule:"due"|"overdue"}[];
+   };
+   rulesBox.replaceChildren();journal.replaceChildren();
+   for(const rule of data.rules??[]){
+    if(rule.id!=="due"&&rule.id!=="overdue")continue;
+    const label=node("label","dela-rule");
+    const check=node("input");check.type="checkbox";check.checked=rule.enabled;
+    check.addEventListener("change",()=>{
+     check.disabled=true;
+     void fetch("/api/dela/automation",{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({id:rule.id,enabled:check.checked})})
+      .then(r=>{if(!r.ok)throw Error("HTTP "+r.status);return loadAutomation();})
+      .catch(()=>{check.checked=!check.checked;message.textContent="Не удалось изменить правило.";})
+      .finally(()=>{check.disabled=false;});
+    });
+    label.append(check,node("span","",rule.id==="due"?"Напоминать в день срока":"Фиксировать просроченные дела"));rulesBox.append(label);
+   }
+   for(const event of (data.events??[]).slice(-20).reverse()){
+    journal.append(node("p","",event.date+" · "+(event.rule==="due"?"Срок":"Просрочено")+" · "+event.title));
+   }
+   if(!journal.childElementCount)journal.append(node("p","","Срабатываний пока нет"));
+  }catch{journal.textContent="Журнал автоматизации недоступен";}
+ }
  const list=node("div","dela-list");list.setAttribute("aria-live","polite");
  const message=node("p","dela-message");message.setAttribute("role","status");
  const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
+ function drawMonth():void{
+  const now=new Date();const first=new Date(now.getFullYear(),now.getMonth()+monthOffset,1);
+  const year=first.getFullYear(),month=first.getMonth();
+  monthTitle.textContent=first.toLocaleDateString("ru-RU",{month:"long",year:"numeric"});
+  monthGrid.replaceChildren();
+  for(const day of ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"])monthGrid.append(node("span","dela-weekday",day));
+  const blanks=(first.getDay()+6)%7;
+  for(let i=0;i<blanks;i++)monthGrid.append(node("span","dela-day-empty"));
+  const days=new Date(year,month+1,0).getDate();
+  for(let n=1;n<=days;n++){
+   const iso=[year,String(month+1).padStart(2,"0"),String(n).padStart(2,"0")].join("-");
+   const total=tasks.filter(t=>t.due===iso).length;
+   const button=node("button","dela-day"+(calendar.value===iso?" selected":""));
+   button.type="button";button.append(node("span","",String(n)));
+   if(total)button.append(node("small","",String(total)));
+   button.title=iso+": "+total+" дел";button.setAttribute("aria-label",iso+", дел: "+total);
+   button.addEventListener("click",()=>{calendar.value=iso;draw();});
+   monthGrid.append(button);
+  }
+ }
+ previous.addEventListener("click",()=>{monthOffset--;drawMonth();});
+ next.addEventListener("click",()=>{monthOffset++;drawMonth();});
+ clearDay.addEventListener("click",()=>{calendar.value="";draw();});
  function draw():void{
+  drawMonth();
   const complete=tasks.filter(x=>x.status==="done").length;
   const overdue=tasks.filter(x=>dueState(x,today())==="overdue").length;
   stats.textContent=tasks.length+" всего · "+complete+" готово · "+overdue+" просрочено";
@@ -154,7 +222,7 @@ export function mountDela(host:HTMLElement):void{
   form.reset();draw();title.focus();
  });
  filter.addEventListener("change",draw);search.addEventListener("input",draw);calendar.addEventListener("change",draw);
- root.append(head,form,toolbar,message,list);host.append(root);draw();
+ root.append(head,form,calendarView,toolbar,message,list,automation);host.append(root);draw();void loadAutomation();
  const loadServer=async():Promise<void>=>{
   add.disabled=true;
   try{
