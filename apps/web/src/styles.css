@@ -551,7 +551,7 @@ button{cursor:pointer}
  .notification-panel,.notification-item,.notification-toast,.notification-count,.notification-empty-icon,.notification-center .notification-toggle .ui-icon{animation:none!important}
 }
 
-/* ======================================================================
+/* ===============================================================
    «Что изменилось» in «Жизнь проекта»: flip board, delta badge with sparks,
    aurora border and a before/after bar. Green — better, red — worse, gold — different.
    ====================================================================== */
@@ -714,3 +714,34 @@ button{cursor:pointer}
  .uh-step small{font-size:.6rem}
 }
 .panel-body .uh-ver{white-space:nowrap}
+/* Дела — local-first task workspace */
+.dela{display:grid;gap:18px;max-width:1100px;margin:0 auto}
+.dela-head{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+.dela-head h3{font-family:var(--font-display);font-size:20px;margin:0 0 6px}
+.dela-head p{margin:0;color:var(--text-2)}
+.dela-stats{border:1px solid var(--gold-line);color:var(--menu-text);background:var(--gold-soft);border-radius:12px;padding:9px 13px;font-size:13px}
+.dela-form{display:grid;gap:11px;padding:18px;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-lg)}
+.dela-form input,.dela-form textarea,.dela-form select,.dela-toolbar input,.dela-toolbar select,.dela-task select{background:var(--surface-3);border:1px solid var(--line-strong);border-radius:9px;color:var(--text);padding:10px;min-width:0;width:100%}
+.dela-form textarea{resize:vertical}
+.dela-form-fields{display:grid;grid-template-columns:1fr 1fr auto;gap:10px}
+.dela-form button{background:var(--accent);border:0;border-radius:9px;padding:10px 16px;color:white;font-weight:700}
+.dela-toolbar{display:grid;grid-template-columns:minmax(150px,210px) 1fr;gap:12px}
+.dela-list{display:grid;gap:11px}
+.dela-task{display:grid;gap:12px;padding:15px;border:1px solid var(--line-strong);border-left:3px solid var(--gold);border-radius:var(--r);background:var(--surface);overflow-wrap:anywhere}
+.dela-task.high{border-left-color:var(--bad)}
+.dela-task.low{border-left-color:var(--text-3)}
+.dela-task.done{opacity:.7}
+.dela-task.done strong{text-decoration:line-through}
+.dela-task-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.dela-task-head strong{font-size:15px}
+.dela-priority{white-space:nowrap;font-size:12px;color:var(--text-2)}
+.dela-task p{margin:0;color:var(--text-2);white-space:pre-wrap;font-size:13px}
+.dela-task-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.dela-task-actions select{width:auto;min-width:130px;padding:7px}
+.dela-due{font-size:12px;color:var(--text-3);margin-right:auto}
+.dela-due[data-state="overdue"]{color:var(--bad)}
+.dela-due[data-state="today"]{color:var(--warn)}
+.dela-remove{background:transparent;color:var(--bad);border:1px solid var(--bad-line);border-radius:9px;padding:7px 10px}
+.dela-empty,.dela-message{margin:0;color:var(--text-3);font-size:13px}
+.dela-empty{padding:35px;text-align:center;border:1px dashed var(--line-strong);border-radius:var(--r)}
+@media(max-width:620px){.dela-form-fields{grid-template-columns:1fr}.dela-toolbar{grid-template-columns:1fr}.dela-task-actions{align-items:stretch}.dela-task-actions select{width:100%}.dela-head{align-items:flex-start}}

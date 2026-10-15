@@ -56,6 +56,7 @@ export function createHomeView():HomeView {
  const pages:{slug:string;button:HTMLButtonElement;panel:HTMLElement;load:()=>void}[]=[];
  let updateTopButton:HTMLButtonElement|null=null;
  const toolInfo=[
+  {slug:"dela",name:"Дела",symbol:"check" as const,loader:()=>import("../features/dela.js").then(m=>m.mountDela),caption:"Планы, задачи и сроки"},
   {slug:"diagnostics",name:"Диагностика",symbol:"activity" as const,loader:()=>import("../features/diagnostics.js").then(m=>m.mountDiagnostics),caption:"Состояние и измерения системы"},
   {slug:"updates",name:"Обновления GitHub",symbol:"refresh" as const,loader:()=>import("../features/github-updates.js").then(m=>m.mountGithubUpdates),caption:"Проверка новых изменений проекта"}
  ];
