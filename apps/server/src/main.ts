@@ -87,6 +87,8 @@ async function main(): Promise<void> {
     {
       health: createHealthRoute(health),
       delaList: async()=>JSON.stringify({tasks:await dela.list()}),
+      delaAutomationList: async()=>JSON.stringify(await delaAutomation.snapshot()),
+      delaAutomationChange: async payload=>JSON.stringify(await delaAutomation.setRule(payload)),
       delaChange: async payload=>JSON.stringify({tasks:await dela.change(payload)}),
       delaDue: async today=>JSON.stringify({events:await dela.dueNotifications(today)}),
       assistantStatus: async () => JSON.stringify({
@@ -163,7 +165,7 @@ async function main(): Promise<void> {
     logger,
     config.shutdownTimeoutMs,
     {
-      closeHttp: () => new Promise<void>((resolve) => server.close(() => resolve())),
+      closeHttp: () => new Promise<void>((resolve) => {clearInterval(automationTimer);server.close(() => resolve());}),
       stopRuntime: () => modules.kernel.stop(),
       flushPersistence: async () => {
         await Promise.all([
