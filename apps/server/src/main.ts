@@ -14,8 +14,8 @@ import { createHttpApplication } from "./bootstrap/server.js";
 import { createHealthRoute } from "./routes/health.js";
 import { createPerformanceRoute } from "./routes/performance.js";
 import { createGithubUpdateRoute } from "./routes/github-updates.js";
-import { gitHistoryMetrics } from "./services/git-history-metrics.js";
-import { deepUpdateMetrics } from "./services/deep-update-metrics.js";
+import { ProjectStats, recordStartup } from "./services/project-stats.js";
+import { MEMORY_LIST_CAP, updaterFigures } from "./services/updater-figures.js";
 import { createGithubUpdateHistoryRoute } from "./routes/github-update-history.js";
 import { createGithubUpdateRequest } from "./routes/github-update-request.js";
 import { createRollbackRoutes } from "./routes/github-rollback.js";
@@ -66,6 +66,12 @@ async function main(): Promise<void> {
   let requestSupervisorShutdown: (() => void) | undefined;
   let requestUpdateShutdown: (() => void) | undefined;
   const rollback = createRollbackRoutes(process.cwd());
+  let startups: number[] = [];
+  const projectStats = new ProjectStats(process.cwd(), config.dataDir, () => updaterFigures({
+    root: process.cwd(),
+    startups: () => startups,
+    memories: async () => (await storage.assistant.listRecent("assistant", MEMORY_LIST_CAP)).length
+  }));
   const server = createHttpApplication(
     config,
     {
@@ -123,8 +129,7 @@ async function main(): Promise<void> {
       },
       performance: createPerformanceRoute(modules.metrics),
       githubUpdates: createGithubUpdateRoute(process.cwd()),
-      gitStatistics: async () => JSON.stringify(await gitHistoryMetrics(process.cwd())),
-      deepStatistics: async () => JSON.stringify(await deepUpdateMetrics(process.cwd())),
+      projectStats: async (force) => JSON.stringify(await projectStats.get(force)),
       githubUpdateHistory: createGithubUpdateHistoryRoute(process.cwd()),
       rollbackList: rollback.list,
       rollbackRequest: rollback.request,
@@ -136,7 +141,9 @@ async function main(): Promise<void> {
     requestContext
   );
   await new Promise<void>((resolve) => server.listen(config.port, config.host, resolve));
-  modules.metrics.observe("server.startup_ms", performance.now() - startupStartedAt);
+  const startupMs = performance.now() - startupStartedAt;
+  modules.metrics.observe("server.startup_ms", startupMs);
+  startups = await recordStartup(config.dataDir, startupMs);
   logger.info("Akariya Tenka listening on http://" + config.host + ":" + config.port);
 
   const shutdown = new ShutdownController(

@@ -1,5 +1,6 @@
 export type IconName = "home" | "activity" | "refresh" | "chevron-left" | "chevron-right" | "bell" | "settings" | "arrow-up" | "arrow-down" | "eye" | "eye-off" | "check" | "alert" | "info" | "arrow-right" | "shield" | "close"
- | "sprout" | "scissors" | "pen" | "file-plus" | "file-x" | "dumbbell" | "minimize" | "clock" | "flame" | "trending-up" | "palette" | "ruler" | "folder" | "book" | "database" | "crown" | "bang" | "dna" | "snowflake" | "orbit" | "branch" | "quote" | "gem" | "smile" | "tag" | "fossil" | "ghost" | "function" | "columns" | "type" | "upload" | "download" | "message" | "wind" | "brush" | "regex" | "package" | "radar" | "hash" | "flask" | "pause" | "check-circle" | "lifebuoy" | "archive" | "recycle" | "layers" | "microscope" | "history" | "chart" | "gauge" | "calendar" | "users" | "commit" | "sparkles" | "code" | "external" | "hard-drive" | "rocket" | "sun" | "moon" | "target";
+ | "sprout" | "scissors" | "pen" | "file-plus" | "file-x" | "dumbbell" | "minimize" | "clock" | "flame" | "trending-up" | "palette" | "ruler" | "folder" | "book" | "database" | "crown" | "bang" | "dna" | "snowflake" | "orbit" | "branch" | "quote" | "gem" | "smile" | "tag" | "fossil" | "ghost" | "function" | "columns" | "type" | "upload" | "download" | "message" | "wind" | "brush" | "regex" | "package" | "radar" | "hash" | "flask" | "pause" | "check-circle" | "lifebuoy" | "archive" | "recycle" | "layers" | "microscope" | "history" | "chart" | "gauge" | "calendar" | "users" | "commit" | "sparkles" | "code" | "external" | "hard-drive" | "rocket" | "sun" | "moon" | "target"
+ | "file" | "brain" | "pulse" | "puzzle" | "search" | "chevron-down" | "cloud";
 const paths: Record<IconName, string[]> = {
   home: ["m3 10 9-7 9 7", "M5 9v12h14V9", "M9 21v-7h6v7"],
   activity: ["M22 12h-4l-3 9-6-18-3 9H2"],
@@ -78,7 +79,14 @@ const paths: Record<IconName, string[]> = {
   "rocket": ["M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.7-.8.7-2.1-.1-2.9a2.2 2.2 0 0 0-2.9-.1Z", "m12 15-3-3a22 22 0 0 1 2-3.9A12.9 12.9 0 0 1 22 2c0 2.7-.8 7.5-6 11a22.4 22.4 0 0 1-4 2Z", "M9 12H4s.6-3 2-4c1.6-1.1 5 0 5 0", "M12 15v5s3-.6 4-2c1.1-1.6 0-5 0-5"],
   "sun": ["M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8", "M12 2v2", "M12 20v2", "m4.9 4.9 1.4 1.4", "m17.7 17.7 1.4 1.4", "M2 12h2", "M20 12h2", "m6.3 17.7-1.4 1.4", "m19.1 4.9-1.4 1.4"],
   "moon": ["M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"],
-  "target": ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20", "M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12", "M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4"]
+  "target": ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20", "M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12", "M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4"],
+  "file": ["M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z", "M14 3v6h6"],
+  "brain": ["M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z", "M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z", "M12 5v13"],
+  "pulse": ["M22 12h-4l-3 9L9 3l-3 9H2"],
+  "puzzle": ["M19.4 15.4a2 2 0 1 0 0-2.8l-1.4-1.4V8a2 2 0 0 0-2-2h-3.2l-1.4-1.4a2 2 0 1 0-2.8 0L7.2 6H4a2 2 0 0 0-2 2v3.2l1.4 1.4a2 2 0 1 0 0 2.8L2 16.8V20a2 2 0 0 0 2 2h3.2l1.4-1.4a2 2 0 1 0 2.8 0l1.4 1.4H16a2 2 0 0 0 2-2v-3.2Z"],
+  "search": ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16", "m21 21-4.3-4.3"],
+  "chevron-down": ["m6 9 6 6 6-6"],
+  "cloud": ["M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9Z"]
 };
 /** Narrows untrusted strings (for example icon names sent by the server) to a known glyph. */
 export function isIconName(value: unknown): value is IconName {
