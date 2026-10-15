@@ -813,3 +813,10 @@ button{cursor:pointer}
 .dela-journal{display:grid;gap:7px;max-height:240px;overflow:auto}
 .dela-journal p{padding:7px 10px;background:var(--surface-2);border-radius:7px;margin:0;font-size:12px;color:var(--text-2)}
 @media(max-width:440px){.dela-month,.dela-automation{padding:10px}.dela-month-grid{gap:3px}.dela-day{min-height:42px}.dela-month-bar{flex-wrap:wrap}}
+
+/* Дела: icon-only self-contained HTML report export */
+.dela-head-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dela-report-button{width:42px;height:42px;display:grid;place-items:center;border:1px solid var(--gold-line);border-radius:12px;background:var(--gold-soft);color:var(--menu-text);transition:background .2s,border-color .2s,transform .2s}
+.dela-report-button:hover{background:var(--surface-3);border-color:var(--gold);transform:translateY(-2px)}
+.dela-report-button:disabled{opacity:.55;cursor:wait}
+@media(prefers-reduced-motion:reduce){.dela-report-button{transition:none}.dela-report-button:hover{transform:none}}
