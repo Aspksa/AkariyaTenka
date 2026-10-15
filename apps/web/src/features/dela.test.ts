@@ -3,7 +3,7 @@ import {parseTasks,dueState,type Task} from "./dela.js";
 const sample:Task={id:"test-1",title:"Подготовить выпуск",notes:"",status:"todo",priority:"high",due:"2026-10-20",createdAt:100,updatedAt:100};
 describe("Дела",()=>{
  it("accepts valid tasks and rejects corrupt or duplicate records",()=>{
-  expect(parseTasks([sample,{...sample,title:"Дубликат"},{...sample,id:"x",status:"bad"},{...sample,id:"y",title:""}])).toEqual([sample]);
+  expect(parseTasks([sample,{...sample,title:"Дубликат"},{...sample,id:"x",status:"bad"},{...sample,id:"y",title:""}])).toEqual([{...sample,repeat:"none",subtasks:[]}]);
   expect(parseTasks(null)).toEqual([]);
  });
  it("enforces bounded title and note lengths",()=>{

@@ -9,6 +9,9 @@ import { StaticWebServer } from "../services/static-web.js";
 export interface HttpRouteSet {
   readonly health: (context: RequestContext) => Promise<string>;
   readonly assistantStatus?: () => Promise<string>;
+  readonly delaList?: () => Promise<string>;
+  readonly delaChange?: (payload:unknown) => Promise<string>;
+  readonly delaDue?: (today:string) => Promise<string>;
   readonly assistantTurn?: (payload: unknown, context: RequestContext) => Promise<string>;
   readonly assistantModels?: () => Promise<string>;
   readonly assistantSettings?: (payload:unknown) => Promise<string>;
@@ -152,6 +155,33 @@ export function createHttpApplication(
             try{payload=JSON.parse(Buffer.concat(chunks).toString("utf8"));}
             catch{throw new AppError({code:"VALIDATION",message:"Invalid settings JSON",correlationId:id});}
             const result=await routes.assistantSettings(payload);
+            response.writeHead(200,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
+            response.end(result);return;
+          }
+          if(url.pathname.startsWith("/api/dela")&& (routes.delaList||routes.delaChange)){
+            const peer=request.socket.remoteAddress;
+            const sameOrigin=config.host==="127.0.0.1" &&
+              ["127.0.0.1","::1","::ffff:127.0.0.1"].includes(peer??"") &&
+              request.headers.host==="127.0.0.1:"+config.port;
+            if(!sameOrigin)throw new AppError({code:"PERMISSION",message:"Local task API required",correlationId:id});
+            let result:string;
+            if(request.method==="GET"&&url.pathname==="/api/dela"&&routes.delaList)result=await routes.delaList();
+            else if(request.method==="GET"&&url.pathname==="/api/dela/due"&&routes.delaDue){
+              const today=url.searchParams.get("today")??"";
+              if(!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(today))throw new AppError({code:"VALIDATION",message:"Invalid local date",correlationId:id});
+              result=await routes.delaDue(today);
+            }else if(request.method==="POST"&&url.pathname==="/api/dela"&&routes.delaChange){
+              if(request.headers.origin!=="http://127.0.0.1:"+config.port||
+                 request.headers["content-type"]?.split(";")[0]?.trim()!=="application/json")
+                throw new AppError({code:"PERMISSION",message:"Local task mutation origin required",correlationId:id});
+              const parts:Buffer[]=[];let size=0;
+              for await(const part of request){const b=Buffer.isBuffer(part)?part:Buffer.from(part);size+=b.length;
+                if(size>16000)throw new AppError({code:"VALIDATION",message:"Task request too large",correlationId:id});parts.push(b);}
+              let payload:unknown;
+              try{payload=JSON.parse(Buffer.concat(parts).toString("utf8"));}
+              catch{throw new AppError({code:"VALIDATION",message:"Invalid task JSON",correlationId:id});}
+              result=await routes.delaChange(payload);
+            }else throw new AppError({code:"NOT_FOUND",message:"Task API route not found",correlationId:id});
             response.writeHead(200,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});
             response.end(result);return;
           }
