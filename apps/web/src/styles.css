@@ -794,3 +794,22 @@ button{cursor:pointer}
 @keyframes life-flash{0%,100%{box-shadow:0 10px 30px -18px var(--q,var(--brand))}25%,60%{box-shadow:0 0 0 3px var(--q,var(--brand)),0 0 30px var(--q,var(--brand))}}
 @media(max-width:520px){.life-change-row{grid-template-columns:auto minmax(0,1fr) auto}.life-change-values{grid-column:2;grid-row:2}.life-change-delta{grid-row:1/3;grid-column:3}}
 @media(prefers-reduced-motion:reduce){.life-changes,.life-changes::after,.life-change-row,.life-group-changed i,.life-tile.flash{animation:none!important}}
+
+/* Дела — monthly calendar and server automation */
+.dela-month,.dela-automation{border:1px solid var(--line-strong);border-radius:var(--r-lg);padding:16px;background:var(--surface)}
+.dela-month-bar{display:flex;gap:10px;align-items:center;margin-bottom:14px}
+.dela-month-bar strong{margin-right:auto;text-transform:capitalize}
+.dela-month-bar button{border:1px solid var(--line-strong);background:var(--surface-3);padding:6px 10px;border-radius:8px}
+.dela-month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+.dela-weekday{text-align:center;font-size:11px;color:var(--text-3);padding:7px 0}
+.dela-day{display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;min-height:48px;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;min-width:0}
+.dela-day small{color:var(--menu-text);font-size:11px}
+.dela-day.selected{border-color:var(--accent);background:var(--accent-soft)}
+.dela-automation h3,.dela-automation h4{margin:0 0 10px}
+.dela-automation>p{color:var(--text-2);font-size:13px}
+.dela-rules{display:flex;flex-wrap:wrap;gap:14px;padding:12px 0}
+.dela-rule{display:flex;align-items:center;gap:9px;font-size:13px}
+.dela-rule input{accent-color:var(--accent)}
+.dela-journal{display:grid;gap:7px;max-height:240px;overflow:auto}
+.dela-journal p{padding:7px 10px;background:var(--surface-2);border-radius:7px;margin:0;font-size:12px;color:var(--text-2)}
+@media(max-width:440px){.dela-month,.dela-automation{padding:10px}.dela-month-grid{gap:3px}.dela-day{min-height:42px}.dela-month-bar{flex-wrap:wrap}}
