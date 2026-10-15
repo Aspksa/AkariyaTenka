@@ -1,0 +1,22 @@
+name: Temporary cleanup Dela report branch
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/temp-clean-dela-report.yml']
+permissions:
+  contents: write
+jobs:
+  clean:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete merged branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          test "$(gh api "repos/$repo/pulls/96" --jq '.merged')" = "true"
+          branch="feat/dela-html-report"
+          if gh api "repos/$repo/branches/$branch" >/dev/null 2>&1; then
+            gh api -X DELETE "repos/$repo/git/refs/heads/$branch"
+          fi
