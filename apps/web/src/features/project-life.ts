@@ -4,7 +4,7 @@
  */
 import { createIcon, type IconName } from "../components/icons.js";
 import { barChart, el, miniChart, ringChart } from "./life-charts.js";
-import { decorateChange, type MetricChange } from "./life-change.js";
+import { changeText, changeTone, decorateChange, type MetricChange } from "./life-change.js";
 
 export interface ProjectMetric {
   id: string; group: string; emoji: string; title: string; hint: string; value: string; detail: string;
@@ -94,7 +94,7 @@ function render(): void {
     el("div", { cls: "life-head-text" }, el("h2", {}, el("span", { cls: "life-pulse", attrs: { "aria-hidden": "true" } }), "Жизнь проекта"),
       el("p", { textContent: data ? [`${data.commits.toLocaleString("ru-RU")} коммитов`, agoText(data.generatedAt), src].filter(Boolean).join(" · ") : "Необычные показатели Akariya" }),
       data?.since ? el("p", { cls: "life-since" }, el("span", { cls: "life-since-dot", attrs: { "aria-hidden": "true" } }),
-        `Изменилось после версии ${data.since.head.slice(0, 7)}: ${data.metrics.filter((m) => m.change).length}`) : null),
+        data.metrics.some((m) => m.change) ? `Сравнение с версией ${data.since.head.slice(0, 7)}` : `После версии ${data.since.head.slice(0, 7)} показатели не изменились`) : null),
     refresh);
   if (!data) {
     host.replaceChildren(head, error
@@ -107,20 +107,71 @@ function render(): void {
   const by = new Map(current.metrics.map((m) => [m.id, m]));
   const highlights = HIGHLIGHTS.map((id) => by.get(id)).filter((m): m is ProjectMetric => !!m);
   const open = readOpen();
+  const tiles = new Map<string, HTMLElement>(), details = new Map<string, HTMLDetailsElement>();
+  const changed = current.metrics.filter((m) => m.change && m.value !== "—");
   const groups = current.groups.map((g) => {
     const items = current.metrics.filter((m) => m.group === g.id);
-    const d = el("details", { cls: "life-group g-" + g.id },
+    const moved = items.filter((m) => m.change && m.value !== "—").length;
+    const badge = moved ? el("span", { cls: "life-group-changed", title: `Изменилось после обновления: ${moved}` }, el("i", { attrs: { "aria-hidden": "true" } }), "+" + moved) : null;
+    const d = el("details", { cls: "life-group g-" + g.id + (moved ? " has-changes" : "") },
       el("summary", {}, el("span", { cls: "life-group-ic", attrs: { "aria-hidden": "true" } }, icon(GROUP_ICON[g.id] ?? "sparkles", 16)),
-        el("span", { cls: "grow", textContent: g.title }), el("span", { cls: "life-count", textContent: String(items.length) }), icon("chevron-down", 16)),
-      el("div", { cls: "life-grid" }, ...items.map(tile)));
+        el("span", { cls: "grow", textContent: g.title }), badge, el("span", { cls: "life-count", textContent: String(items.length) }), icon("chevron-down", 16)),
+      el("div", { cls: "life-grid" }, ...items.map((m, i) => { const t = tile(m, i); tiles.set(m.id, t); return t; })));
     d.open = open.has(g.id);
     d.addEventListener("toggle", () => { const s = readOpen(); if (d.open) s.add(g.id); else s.delete(g.id); saveOpen(s); });
+    details.set(g.id, d);
     return d;
   });
+  const jump = (m: ProjectMetric): void => {
+    const d = details.get(m.group), t = tiles.get(m.id);
+    if (!d || !t) return;
+    d.open = true;
+    t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash");
+    t.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    t.focus({ preventScroll: true });
+  };
   host.replaceChildren(head,
     el("div", { cls: "life-highlights" }, ...highlights.map((m) => el("div", { cls: "life-hl", title: m.hint }, el("span", { textContent: m.emoji }), el("b", { textContent: m.value }), el("small", { textContent: m.title })))),
+    ...(current.since && changed.length ? [changesBlock(current, changed, jump)] : []),
     ...groups,
     ...(error ? [el("p", { cls: "life-note", textContent: error })] : []));
+}
+
+const SHOWN_CHANGES = 6;
+/** «После обновления»: every figure that moved, the biggest steps first; a click opens its group and lights the tile. */
+function changesBlock(current: ProjectStatsData, changed: ProjectMetric[], jump: (m: ProjectMetric) => void): HTMLElement {
+  const groupTitle = new Map(current.groups.map((g) => [g.id, g.title]));
+  const weight = (m: ProjectMetric): number => { const c = m.change!; return c.from === 0 ? Infinity : Math.abs((c.to - c.from) / c.from); };
+  const sorted = [...changed].sort((a, b) => weight(b) - weight(a));
+  const counts = { good: 0, bad: 0, neutral: 0 };
+  for (const m of sorted) counts[changeTone(m.id, m.change!)]++;
+  const list = el("ol", { cls: "life-changes-list" });
+  const fill = (n: number): void => {
+    list.replaceChildren(...sorted.slice(0, n).map((m, i) => {
+      const c = m.change!, tone = changeTone(m.id, c), { delta, percent } = changeText(c);
+      const row = el("button", { cls: "life-change-row tone-" + tone, title: `${m.title}: было ${c.before}, стало ${m.value} (${percent}). Показать плитку`, attrs: { type: "button" } },
+        el("span", { cls: "life-change-emoji", textContent: m.emoji, attrs: { "aria-hidden": "true" } }),
+        el("span", { cls: "life-change-name" }, el("b", { textContent: m.title }), el("small", { cls: "g-" + m.group, textContent: groupTitle.get(m.group) ?? "" })),
+        el("span", { cls: "life-change-values" }, el("s", { textContent: c.before }), el("span", { textContent: "→", attrs: { "aria-hidden": "true" } }), el("b", { textContent: m.value })),
+        el("span", { cls: "life-change-delta" + (c.to > c.from ? " up" : " down") }, (c.to > c.from ? "↑ " : "↓ ") + delta));
+      row.style.setProperty("--i", String(i));
+      row.addEventListener("click", () => jump(m));
+      return el("li", {}, row);
+    }));
+  };
+  fill(SHOWN_CHANGES);
+  const more = sorted.length > SHOWN_CHANGES ? el("button", { cls: "life-changes-more", textContent: `Показать все ${sorted.length}`, attrs: { type: "button" } }) : null;
+  more?.addEventListener("click", () => { fill(sorted.length); more.remove(); });
+  const sinceDate = Date.parse(current.since!.at);
+  return el("section", { cls: "life-changes", attrs: { "aria-label": "Что изменилось после обновления" } },
+    el("header", { cls: "life-changes-head" },
+      el("div", {}, el("strong", { textContent: "После обновления" }),
+        el("small", { textContent: `${changed.length} ${changed.length % 10 === 1 && changed.length % 100 !== 11 ? "показатель" : changed.length % 10 >= 2 && changed.length % 10 <= 4 && (changed.length % 100 < 12 || changed.length % 100 > 14) ? "показателя" : "показателей"} изменились с версии ${current.since!.head.slice(0, 7)}` + (Number.isFinite(sinceDate) ? ", " + agoText(current.since!.at) : "") })),
+      el("div", { cls: "life-changes-tally" },
+        counts.good ? el("span", { cls: "tone-good", title: "Стало лучше", textContent: "▲ " + counts.good }) : null,
+        counts.bad ? el("span", { cls: "tone-bad", title: "Стало хуже", textContent: "▼ " + counts.bad }) : null,
+        counts.neutral ? el("span", { cls: "tone-neutral", title: "Просто изменилось", textContent: "● " + counts.neutral }) : null)),
+    list, more);
 }
 
 async function fetchStats(force: boolean): Promise<ProjectStatsData> {
