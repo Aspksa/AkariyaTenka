@@ -43,13 +43,13 @@ export function mountDela(host:HTMLElement):void{
  const title=node("input");title.placeholder="Новое дело…";title.required=true;title.maxLength=160;title.setAttribute("aria-label","Название дела");
  const notes=node("textarea");notes.placeholder="Описание или заметки";notes.maxLength=2000;notes.rows=2;notes.setAttribute("aria-label","Описание дела");
  const priority=node("select");priority.setAttribute("aria-label","Приоритет");
- for(const [value,label] of [["normal","Обычный"],["high","Высокий"],["low","Низкий"]]){const o=node("option","",label);o.value=value;priority.append(o);}
+ for(const [value,label] of [["normal","Обычный"],["high","Высокий"],["low","Низкий"]] as const){const o=node("option","",label);o.value=value;priority.append(o);}
  const due=node("input");due.type="date";due.setAttribute("aria-label","Срок выполнения");
  const add=node("button","","Добавить дело");add.type="submit";
  const formFields=node("div","dela-form-fields");formFields.append(priority,due,add);form.append(title,notes,formFields);
  const toolbar=node("div","dela-toolbar");
  const filter=node("select");filter.setAttribute("aria-label","Фильтр дел");
- for(const [value,label] of [["all","Все"],["todo","Запланированы"],["doing","В работе"],["done","Выполнены"],["overdue","Просрочены"]]){const o=node("option","",label);o.value=value;filter.append(o);}
+ for(const [value,label] of [["all","Все"],["todo","Запланированы"],["doing","В работе"],["done","Выполнены"],["overdue","Просрочены"]] as const){const o=node("option","",label);o.value=value;filter.append(o);}
  const search=node("input");search.placeholder="Поиск по делам";search.setAttribute("aria-label","Поиск дел");
  toolbar.append(filter,search);
  const list=node("div","dela-list");list.setAttribute("aria-live","polite");
@@ -74,7 +74,7 @@ export function mountDela(host:HTMLElement):void{
    const description=node("p","",task.notes);description.hidden=!task.notes;
    const bottom=node("div","dela-task-actions");
    const select=node("select");select.setAttribute("aria-label","Статус: "+task.title);
-   for(const [value,label] of [["todo","В планах"],["doing","В работе"],["done","Готово"]]){
+   for(const [value,label] of [["todo","В планах"],["doing","В работе"],["done","Готово"]] as const){
     const o=node("option","",label);o.value=value;select.append(o);
    }
    select.value=task.status;
