@@ -1,5 +1,6 @@
 import { createIcon, type IconName } from "../components/icons.js";
 import { projectLifePanel } from "./project-life.js";
+import { renderUpdateHistory, renderUpdateHistoryError, type HistoryEvent } from "./update-history.js";
 import { updateOutcome, updateProgress, type UpdateEvent } from "./update-progress.js";
 type UpdateStatus = {
   repository: string; branch: string; current: string | null;
@@ -73,7 +74,7 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   };
   const historyTitle = document.createElement("h3");
   historyTitle.textContent = "История обновлений";
-  const historyList = document.createElement("ul");
+  const historyList = document.createElement("div");
   historyList.setAttribute("aria-label", "История обновлений Akariya");
   const whatsNew = document.createElement("section");
   const whatsNewTitle = document.createElement("h3");
@@ -128,14 +129,14 @@ export function mountGithubUpdates(parent: HTMLElement): void {
   whatsNewTitle.prepend(createIcon("sparkles"));
   rollbackTitle.prepend(createIcon("lifebuoy"));
   historyTitle.prepend(createIcon("history"));
-  historyList.className = "update-timeline";
+  historyList.className = "update-history";
   link.className = "update-link";
   whatsNew.append(link);
   const backups = block("update-card", rollbackTitle, rollbackList);
-  const history = block("update-card", historyTitle, historyList);
+  const history = block("update-card update-history-card", historyTitle, historyList);
   parent.classList.add("updates-page");
   // As in JUUNIBI: the update centre on the left, «Жизнь проекта» in a column on the right.
-  parent.append(block("upd-layout", block("upd-main", summary, whatsNew, block("update-grid", backups, history)), projectLifePanel()));
+  parent.append(block("upd-layout", block("upd-main", summary, whatsNew, history, backups), projectLifePanel()));
   const snoozeKey = "akariya-update-snooze";
   function snoozed(sha: string): boolean {
     try {
@@ -150,49 +151,14 @@ export function mountGithubUpdates(parent: HTMLElement): void {
     window.dispatchEvent(new Event("akariya-update-snooze"));
     message.textContent = "Обновление отложено до завтра. Вы можете установить его в любой момент.";
   });
-  const historyLabels: Record<string, string> = {
-    download_started: "Загрузка", validated: "Проверка сборки",
-    prepared: "Установка подготовлена", confirmed: "Обновление подтверждено",
-    rolled_back: "Откат", failed: "Ошибка обновления"
-  };
   const loadHistory = async (): Promise<void> => {
     try {
       const response = await fetch("/api/updates/history", { cache: "no-store" });
       if (!response.ok) throw Error("History unavailable");
-      const payload = await response.json() as {
-        events?: { at: string; event: string; revision: string | null }[]
-      };
-      historyList.replaceChildren();
-      const records = Array.isArray(payload.events) ? payload.events.slice(0, 12) : [];
-      for (const record of records) {
-        if (typeof record.at !== "string" || typeof record.event !== "string") continue;
-        const item = document.createElement("li");
-        const label = historyLabels[record.event] ?? "Событие";
-        item.dataset.event = record.event in historyLabels ? record.event : "other";
-        const name = document.createElement("strong");
-        name.textContent = label;
-        const time = document.createElement("time");
-        time.dateTime = record.at;
-        time.textContent = new Date(record.at).toLocaleString("ru-RU");
-        item.append(name, time);
-        if (record.revision && /^[0-9a-f]{40}$/.test(record.revision)) {
-          const code = document.createElement("code");
-          code.textContent = record.revision.slice(0, 12);
-          item.append(code);
-        }
-        historyList.append(item);
-      }
-      if (historyList.childElementCount === 0) {
-        const empty = document.createElement("li");
-        empty.textContent = "История пока пуста";
-        historyList.append(empty);
-      }
-    } catch {
-      historyList.replaceChildren();
-      const error = document.createElement("li");
-      error.textContent = "История временно недоступна";
-      historyList.append(error);
-    }
+      const payload = await response.json() as { events?: HistoryEvent[] };
+      renderUpdateHistory(historyList, (Array.isArray(payload.events) ? payload.events : [])
+        .filter(e => e && typeof e.at === "string" && typeof e.event === "string"));
+    } catch { renderUpdateHistoryError(historyList); }
   };
   let approvedSha: string | null = null;
   let installing = false;

@@ -9,6 +9,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AppError } from "@akariya/core";
+import { cleanSnapshots, compareWithPrevious, type MetricChange, type Snapshot } from "./project-changes.js";
 
 export const STATS_URL = "https://raw.githubusercontent.com/Aspksa/AkariyaTenka/stats/project-stats.json";
 const LOCAL_TTL = 10 * 60_000, REMOTE_TTL = 60 * 60_000;
@@ -20,6 +21,8 @@ export interface Metric {
   labels?: string[];
   /** A share from 0 to 1, drawn as a ring next to the value. */
   ring?: number;
+  /** Set when the figure differs from the version installed before this one. */
+  change?: MetricChange;
 }
 export const CHART_KINDS = ["hours", "calendar", "spark", "list", "line", "split", "dots", "swatches"] as const;
 export type ChartKind = typeof CHART_KINDS[number];
@@ -28,6 +31,8 @@ export interface ProjectStatsData {
   groups: { id: string; title: string }[]; metrics: Metric[];
   /** Where the figures came from: this checkout, GitHub, or the copy saved after the last successful download. */
   source?: "git" | "github" | "saved";
+  /** The version the changes are counted from. */
+  since?: { head: string; at: string };
 }
 export type RuntimeFigures = Record<string, { value: string; detail?: string } & Pick<Metric, "kind" | "series" | "labels" | "ring">>;
 
@@ -79,7 +84,29 @@ export class ProjectStats {
   private async withRuntime(data: ProjectStatsData): Promise<ProjectStatsData> {
     let extra: RuntimeFigures = {};
     try { extra = await this.runtime(); } catch { /* the figures from history are still worth showing */ }
-    return { ...data, metrics: data.metrics.map((m) => (extra[m.id] ? { ...m, ...extra[m.id], detail: extra[m.id]!.detail ?? m.detail } : m)) };
+    const merged = { ...data, metrics: data.metrics.map((m) => (extra[m.id] ? { ...m, ...extra[m.id], detail: extra[m.id]!.detail ?? m.detail } : m)) };
+    return this.withChanges(merged);
+  }
+
+  private get snapshotsFile(): string { return path.join(this.dataDir, "project-stats-snapshots.json"); }
+  private snapshotQueue: Promise<unknown> = Promise.resolve();
+  /** Marks what changed since the previous version; the figures still show when the snapshot file can't be used. */
+  private withChanges(data: ProjectStatsData): Promise<ProjectStatsData> {
+    const task = this.snapshotQueue.then(async () => {
+      let snapshots: Snapshot[] = [];
+      try { snapshots = cleanSnapshots(JSON.parse(await readFile(this.snapshotsFile, "utf8"))); } catch { /* first version */ }
+      const result = compareWithPrevious(data, snapshots);
+      if (result.snapshots !== snapshots) {
+        try {
+          await mkdir(this.dataDir, { recursive: true });
+          await writeFile(this.snapshotsFile + ".tmp", JSON.stringify(result.snapshots));
+          await rename(this.snapshotsFile + ".tmp", this.snapshotsFile);
+        } catch { /* read-only folder: compared, just not remembered */ }
+      }
+      return result.data;
+    });
+    this.snapshotQueue = task.catch(() => undefined);
+    return task.catch(() => data);
   }
 
   private fromGit(): Promise<ProjectStatsData> {
