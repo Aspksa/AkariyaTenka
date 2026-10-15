@@ -86,6 +86,11 @@ export function mountAssistantAvatar(): void {
    }catch{status.textContent="Состояние ИИ недоступно";}
  }
  avatar.addEventListener("click",()=>{chat.hidden=!chat.hidden;if(!chat.hidden){void refresh();input.focus();}});
+ window.addEventListener("akariya-dela-consult",(event:Event)=>{
+  const detail=(event as CustomEvent<unknown>).detail;
+  if(typeof detail!=="string"||detail.length>3000)return;
+  chat.hidden=false;settings.hidden=true;input.value=detail;input.focus();void refresh();
+ });
  close.addEventListener("click",()=>{chat.hidden=true;avatar.focus();});
  options.addEventListener("click",()=>{settings.hidden=!settings.hidden;if(!settings.hidden)void refresh();});
  form.addEventListener("submit",event=>{event.preventDefault();const text=input.value.trim();if(!text||send.disabled)return;
