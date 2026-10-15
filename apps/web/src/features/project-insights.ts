@@ -28,10 +28,10 @@ interface DeepStats {
   successRate?: number | null;
   caveats?: string[];
 }
-type TabId = "history" | "records" | "code" | "measure";
 
 const SVG = "http://www.w3.org/2000/svg";
 const format = new Intl.NumberFormat("ru-RU");
+const compact = new Intl.NumberFormat("ru-RU", { notation: "compact", maximumFractionDigits: 1 });
 const num = (v: number | null | undefined): string => typeof v === "number" && Number.isFinite(v) ? format.format(v) : "—";
 const motion = (): boolean => !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 /** Distinct hues cycled across tiles so neighbours never share a colour. */
@@ -40,11 +40,17 @@ const LANGUAGE_HUES: Record<string, number> = {
   ".ts": 214, ".tsx": 200, ".js": 50, ".mjs": 42, ".cjs": 36, ".css": 280, ".html": 14,
   ".json": 150, ".md": 190, ".ps1": 230, ".bat": 120, ".yml": 340, ".yaml": 340, ".py": 205, ".sh": 100, ".sql": 30
 };
+let svgIds = 0;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   if (cls) node.className = cls;
   if (text !== undefined) node.textContent = text;
+  return node;
+}
+function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
+  const node = document.createElementNS(SVG, tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
   return node;
 }
 function iconChip(name: IconName, cls = "insight-icon"): HTMLElement {
@@ -64,6 +70,22 @@ export function animatableNumber(value: string): { target: number; decimals: num
   if (!Number.isFinite(target) || target < 0 || target > 1e12) return null;
   return { target, decimals, separator: match[2] ?? ",", suffix: match[4] ?? "" };
 }
+/** First percentage mentioned in a metric value, e.g. "108 строк (0.9%)" → 0.9. */
+export function percentIn(value: string): number | null {
+  const match = /(\d+(?:[.,]\d+)?)\s?%/u.exec(value);
+  if (!match) return null;
+  const p = Number(match[1]!.replace(",", "."));
+  return Number.isFinite(p) && p >= 0 && p <= 100 ? p : null;
+}
+/** Seven-day buckets of a Monday-aligned daily series. */
+export function weeklyTotals(days: { date: string; commits: number }[]): { start: string; commits: number }[] {
+  const weeks: { start: string; commits: number }[] = [];
+  for (let i = 0; i < days.length; i += 7) {
+    const slice = days.slice(i, i + 7);
+    weeks.push({ start: slice[0]!.date, commits: slice.reduce((s, d) => s + d.commits, 0) });
+  }
+  return weeks;
+}
 function countUp(node: HTMLElement, value: string, delay: number): void {
   node.textContent = value;
   const parsed = animatableNumber(value);
@@ -73,7 +95,7 @@ function countUp(node: HTMLElement, value: string, delay: number): void {
     ? v.toFixed(decimals).replace(".", separator) + suffix
     : format.format(Math.round(v)) + suffix;
   node.textContent = render(0);
-  const duration = 1200, startedAt = performance.now() + delay;
+  const duration = 1100, startedAt = performance.now() + delay;
   const tick = (now: number): void => {
     if (!node.isConnected) return;
     const t = Math.min(1, Math.max(0, (now - startedAt) / duration));
@@ -92,9 +114,9 @@ const revealer = typeof IntersectionObserver === "function"
       }
     }, { rootMargin: "0px 0px -6% 0px" })
   : null;
-function reveal(node: HTMLElement, index: number): void {
+function reveal(node: Element, index: number): void {
   node.classList.add("reveal");
-  node.style.setProperty("--delay", Math.min(index, 16) * 45 + "ms");
+  (node as HTMLElement).style.setProperty("--delay", Math.min(index, 14) * 40 + "ms");
   if (revealer) revealer.observe(node); else node.classList.add("is-visible");
 }
 /** Cursor-following glow on hover-capable devices. */
@@ -106,212 +128,332 @@ function trackGlow(node: HTMLElement): void {
   });
 }
 
-interface TileSpec { icon: IconName; label: string; value: string | null; detail?: string | undefined; path?: string | undefined; hue?: number; wide?: boolean }
+/* ---------- Mini visuals inside tiles ---------- */
+
+function miniRing(percent: number, hue: number): SVGSVGElement {
+  const ring = svg("svg", { viewBox: "0 0 36 36", class: "mini-ring", "aria-hidden": "true" });
+  ring.style.setProperty("--hue", String(hue));
+  ring.append(svg("circle", { cx: 18, cy: 18, r: 15, class: "mini-ring-track", pathLength: 100 }));
+  const arc = svg("circle", { cx: 18, cy: 18, r: 15, class: "mini-ring-arc", pathLength: 100 });
+  arc.style.setProperty("--p", Math.max(1.5, percent).toFixed(1));
+  ring.append(arc);
+  return ring;
+}
+function miniSpark(values: number[], hue: number): SVGSVGElement {
+  const w = 72, h = 26, max = Math.max(1, ...values);
+  const spark = svg("svg", { viewBox: `0 0 ${w} ${h}`, class: "mini-spark", preserveAspectRatio: "none", "aria-hidden": "true" });
+  spark.style.setProperty("--hue", String(hue));
+  const step = w / Math.max(1, values.length);
+  values.forEach((v, i) => {
+    const bh = Math.max(1.5, v / max * (h - 2));
+    const bar = svg("rect", { x: (i * step + step * .18).toFixed(2), y: (h - bh).toFixed(2), width: (step * .64).toFixed(2), height: bh.toFixed(2), rx: 1 });
+    bar.style.setProperty("--i", String(i));
+    spark.append(bar);
+  });
+  return spark;
+}
+function miniStack(parts: { value: number; hue: number }[]): HTMLElement {
+  const bar = el("span", "mini-stack");
+  bar.setAttribute("aria-hidden", "true");
+  const total = parts.reduce((s, p) => s + p.value, 0) || 1;
+  parts.forEach((p, i) => {
+    const seg = el("span");
+    seg.style.setProperty("--w", (p.value / total * 100).toFixed(2) + "%");
+    seg.style.setProperty("--hue", String(p.hue));
+    seg.style.setProperty("--i", String(i));
+    bar.append(seg);
+  });
+  return bar;
+}
+
+/* ---------- Tiles ---------- */
+
+interface TileSpec {
+  icon: IconName; label: string; value: string | null;
+  detail?: string | undefined; path?: string | undefined; hue?: number;
+  /** 0–1: the value relative to the largest comparable value in its group. */
+  share?: number | undefined;
+}
 function tile(spec: TileSpec, index: number): HTMLElement {
-  const card = el("article", "insight-tile" + (spec.wide ? " wide" : ""));
-  card.style.setProperty("--hue", String(spec.hue ?? HUES[index % HUES.length]));
+  const hue = spec.hue ?? HUES[index % HUES.length]!;
+  const card = el("article", "insight-tile");
+  card.style.setProperty("--hue", String(hue));
   const head = el("div", "insight-tile-head");
   head.append(iconChip(spec.icon), el("span", "insight-tile-label", spec.label));
-  const value = el("p", "insight-tile-value");
-  if (spec.value === null || spec.value === "") {
-    card.classList.add("is-empty");
-    value.textContent = "Не измеряется";
-  } else {
-    // Long textual facts (paths, commit subjects, identifiers) use a calmer type size than headline numbers.
-    if (spec.value.length > 18 && !animatableNumber(spec.value)) value.classList.add("is-long");
-    countUp(value, spec.value, Math.min(index, 16) * 45);
-  }
-  card.append(head, value);
+  const percent = spec.value ? percentIn(spec.value) : null;
+  if (percent !== null) head.append(miniRing(percent, hue));
+  card.append(head);
   if (spec.path) {
     const code = el("code", "insight-path", spec.path);
     code.title = spec.path;
     card.append(code);
   }
-  if (spec.detail) card.append(el("small", "insight-tile-detail", spec.detail));
+  if (spec.detail) {
+    const detail = el("small", "insight-tile-detail", spec.detail);
+    detail.title = spec.detail;
+    card.append(detail);
+  }
+  // The value always sits in the bottom-right corner; long textual facts get a calmer, wrapping style.
+  const value = el("p", "insight-tile-value");
+  const text = spec.value ?? "—";
+  if (text.length > 16 && !animatableNumber(text)) card.classList.add("is-long");
+  else if (text.length > 11) value.classList.add("is-wide");
+  countUp(value, text, Math.min(index, 14) * 40);
+  value.title = text;
+  card.append(value);
+  if (spec.share !== undefined) {
+    const meter = el("span", "insight-meter");
+    meter.setAttribute("aria-hidden", "true");
+    meter.style.setProperty("--w", Math.max(2, Math.min(100, spec.share * 100)).toFixed(1) + "%");
+    card.append(meter);
+  }
   trackGlow(card);
   reveal(card, index);
   return card;
 }
-function grid(cards: HTMLElement[]): HTMLElement {
+/** Adds relative meters to tiles whose values are comparable plain counts. */
+function withShares(specs: TileSpec[]): TileSpec[] {
+  const values = specs.map(s => s.value ? animatableNumber(s.value)?.target ?? null : null);
+  const max = Math.max(0, ...values.filter((v): v is number => v !== null));
+  return specs.map((s, i) => values[i] !== null && max > 0 ? { ...s, share: values[i]! / max } : s);
+}
+function tileGrid(specs: TileSpec[], offset = 0): HTMLElement {
   const wrap = el("div", "insight-grid");
-  wrap.append(...cards);
+  wrap.append(...specs.map((s, i) => tile(s, i + offset)));
   return wrap;
 }
-function block(icon: IconName, title: string, subtitle: string, ...body: HTMLElement[]): HTMLElement {
-  const box = el("section", "insight-block");
-  const head = el("header", "insight-block-head");
+/** Metrics without a value are listed compactly instead of occupying full tiles. */
+function pending(metrics: DeepMetric[]): HTMLElement | null {
+  if (!metrics.length) return null;
+  const row = el("div", "insight-pending");
+  row.append(el("span", "insight-pending-title", "Пока не измеряется"));
+  for (const m of metrics) {
+    const chip = el("span", "insight-pending-chip");
+    chip.append(createIcon(isIconName(m.icon) ? m.icon : "info"), el("span", undefined, m.label));
+    chip.title = m.detail;
+    row.append(chip);
+  }
+  return row;
+}
+
+/* ---------- Chart cards ---------- */
+
+function card(icon: IconName, title: string, subtitle: string, span: "s" | "m" | "l" | "xl", ...body: (HTMLElement | SVGElement)[]): HTMLElement {
+  const box = el("section", "insight-card span-" + span);
+  const head = el("header", "insight-card-head");
   const text = el("div");
   text.append(el("h4", undefined, title), el("p", undefined, subtitle));
-  head.append(iconChip(icon, "insight-block-icon"), text);
+  head.append(iconChip(icon, "insight-card-icon"), text);
   box.append(head, ...body);
   reveal(box, 0);
   return box;
 }
 
-/* ---------- Charts (plain DOM/SVG, no dependencies) ---------- */
+/** Weekly histogram with a smooth trend line drawn over it. */
+function weeklyChart(days: { date: string; commits: number }[]): HTMLElement {
+  const weeks = weeklyTotals(days);
+  const wrap = el("div", "trend");
+  const w = 520, h = 150, pad = 8, max = Math.max(1, ...weeks.map(x => x.commits));
+  const chart = svg("svg", { viewBox: `0 0 ${w} ${h}`, class: "trend-svg", role: "img",
+    "aria-label": "Коммиты по неделям: " + weeks.map(x => x.commits).join(", ") });
+  const id = "trend-" + ++svgIds;
+  const defs = svg("defs");
+  const grad = svg("linearGradient", { id, x1: 0, y1: 0, x2: 0, y2: 1 });
+  grad.append(svg("stop", { offset: "0%", "stop-color": "hsl(356 90% 62%)", "stop-opacity": ".45" }),
+    svg("stop", { offset: "100%", "stop-color": "hsl(356 90% 62%)", "stop-opacity": "0" }));
+  defs.append(grad);
+  chart.append(defs);
+  for (let g = 1; g <= 3; g++) chart.append(svg("line", { x1: 0, x2: w, y1: (h - pad) * g / 4, y2: (h - pad) * g / 4, class: "trend-grid" }));
+  const step = w / weeks.length;
+  const points = weeks.map((x, i) => [i * step + step / 2, h - pad - x.commits / max * (h - pad * 3)] as const);
+  weeks.forEach((x, i) => {
+    const bh = Math.max(2, x.commits / max * (h - pad * 3));
+    const bar = svg("rect", { x: (i * step + step * .2).toFixed(1), y: (h - pad - bh).toFixed(1), width: (step * .6).toFixed(1), height: bh.toFixed(1), rx: 3, class: "trend-bar" });
+    bar.style.setProperty("--i", String(i));
+    bar.style.setProperty("--hue", String(Math.round(214 + (356 - 214) * x.commits / max)));
+    const tip = svg("title");
+    tip.textContent = "Неделя с " + new Date(x.start + "T12:00:00").toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) + ": " + num(x.commits);
+    bar.append(tip);
+    chart.append(bar);
+  });
+  // Catmull-Rom → cubic Bézier for a soft line through every weekly point.
+  let d = `M${points[0]![0].toFixed(1)} ${points[0]![1].toFixed(1)}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)]!, p1 = points[i]!, p2 = points[i + 1]!, p3 = points[Math.min(points.length - 1, i + 2)]!;
+    // Clamp control points so the curve never dips below the baseline or above the peak.
+    const clampY = (y: number): number => Math.min(h - pad, Math.max(pad * 2, y));
+    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, clampY(p1[1] + (p2[1] - p0[1]) / 6)];
+    const c2 = [p2[0] - (p3[0] - p1[0]) / 6, clampY(p2[1] - (p3[1] - p1[1]) / 6)];
+    d += ` C${c1[0]!.toFixed(1)} ${c1[1]!.toFixed(1)} ${c2[0]!.toFixed(1)} ${c2[1]!.toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  const last = points[points.length - 1]!, first = points[0]!;
+  chart.append(svg("path", { d: `${d} L${last[0].toFixed(1)} ${h - pad} L${first[0].toFixed(1)} ${h - pad} Z`, fill: `url(#${id})`, class: "trend-area" }));
+  chart.append(svg("path", { d, class: "trend-line", pathLength: 100 }));
+  const peak = weeks.reduce((best, x, i) => x.commits > weeks[best]!.commits ? i : best, 0);
+  chart.append(svg("circle", { cx: points[peak]![0].toFixed(1), cy: points[peak]![1].toFixed(1), r: 4.5, class: "trend-peak" }));
+  const axis = el("div", "trend-axis");
+  axis.setAttribute("aria-hidden", "true");
+  let lastMonth = "";
+  for (const x of weeks) {
+    const month = new Date(x.start + "T12:00:00").toLocaleDateString("ru-RU", { month: "short" }).replace(".", "");
+    axis.append(el("span", undefined, month !== lastMonth ? month : ""));
+    lastMonth = month;
+  }
+  wrap.append(chart, axis);
+  return wrap;
+}
+
+/** 24 radial bars around a clock face. */
+function hourClock(hours: number[]): HTMLElement {
+  const wrap = el("div", "clock");
+  const max = Math.max(1, ...hours), peak = hours.indexOf(Math.max(...hours));
+  const chart = svg("svg", { viewBox: "0 0 200 200", class: "clock-svg", role: "img",
+    "aria-label": "Коммиты по часам. Пик: " + peak + ":00" });
+  chart.append(svg("circle", { cx: 100, cy: 100, r: 34, class: "clock-face" }));
+  chart.append(svg("circle", { cx: 100, cy: 100, r: 92, class: "clock-ring" }));
+  hours.forEach((v, h) => {
+    const angle = (h / 24) * Math.PI * 2 - Math.PI / 2;
+    const inner = 40, outer = 40 + Math.max(3, v / max * 46);
+    const line = svg("line", {
+      x1: (100 + Math.cos(angle) * inner).toFixed(2), y1: (100 + Math.sin(angle) * inner).toFixed(2),
+      x2: (100 + Math.cos(angle) * outer).toFixed(2), y2: (100 + Math.sin(angle) * outer).toFixed(2),
+      class: "clock-bar" + (h === peak && v > 0 ? " peak" : ""), pathLength: 100
+    });
+    line.style.setProperty("--hue", String(Math.round(230 + (h / 23) * 150) % 360));
+    line.style.setProperty("--i", String(h));
+    const tip = svg("title");
+    tip.textContent = h + ":00 — " + num(v);
+    line.append(tip);
+    chart.append(line);
+  });
+  for (const [h, x, y] of [[0, 100, 12], [6, 192, 104], [12, 100, 196], [18, 8, 104]] as const) {
+    const label = svg("text", { x, y, class: "clock-label", "text-anchor": "middle" });
+    label.textContent = String(h);
+    chart.append(label);
+  }
+  const centre = el("div", "clock-centre");
+  centre.append(el("strong", undefined, String(peak).padStart(2, "0") + ":00"), el("span", undefined, "пик"));
+  wrap.append(chart, centre);
+  return wrap;
+}
+
+function columns(values: number[], labels: string[], label: string, hueFrom: number, hueTo: number): HTMLElement {
+  const chart = el("div", "columns");
+  chart.setAttribute("role", "img");
+  const max = Math.max(1, ...values), peak = values.indexOf(Math.max(...values));
+  chart.setAttribute("aria-label", label + ". Пик: " + (labels[peak] ?? "") + " — " + num(values[peak]));
+  values.forEach((value, i) => {
+    const col = el("div", "column" + (i === peak && value > 0 ? " peak" : ""));
+    col.style.setProperty("--h", (value / max * 100).toFixed(1) + "%");
+    col.style.setProperty("--hue", String(Math.round(hueFrom + (hueTo - hueFrom) * i / Math.max(1, values.length - 1))));
+    col.style.setProperty("--i", String(i));
+    col.title = labels[i] + ": " + num(value);
+    const fill = el("span", "column-fill");
+    fill.append(el("span", "column-value", value ? compact.format(value) : ""));
+    col.append(fill, el("span", "column-label", labels[i]));
+    chart.append(col);
+  });
+  return chart;
+}
+
+/** Horizontal histogram: label, proportional bar, value and share. */
+function hbars(rows: { label: string; value: number; hue: number; icon?: IconName; mono?: boolean }[], caption: string): HTMLElement {
+  const list = el("div", "hbars");
+  list.setAttribute("role", "img");
+  list.setAttribute("aria-label", caption + ": " + rows.map(r => r.label + " " + num(r.value)).join(", "));
+  const max = Math.max(1, ...rows.map(r => r.value));
+  const total = rows.reduce((s, r) => s + r.value, 0) || 1;
+  rows.forEach((row, i) => {
+    const line = el("div", "hbar");
+    line.style.setProperty("--hue", String(row.hue));
+    line.style.setProperty("--w", Math.max(1.5, row.value / max * 100).toFixed(1) + "%");
+    line.style.setProperty("--i", String(i));
+    const name = el("span", "hbar-name" + (row.mono ? " mono" : ""));
+    if (row.icon) name.append(createIcon(row.icon));
+    name.append(el("span", undefined, row.label));
+    const track = el("span", "hbar-track");
+    track.append(el("span", "hbar-fill"));
+    const value = el("span", "hbar-value");
+    countUp(value, num(row.value), i * 70);
+    line.append(name, track, value, el("span", "hbar-share", (row.value / total * 100).toFixed(1) + "%"));
+    list.append(line);
+  });
+  return list;
+}
 
 function heatmap(days: { date: string; commits: number }[]): HTMLElement {
   const wrap = el("div", "heatmap");
   const max = Math.max(1, ...days.map(d => d.commits));
   const cells = el("div", "heatmap-grid");
   cells.setAttribute("role", "img");
-  const total = days.reduce((sum, d) => sum + d.commits, 0);
-  cells.setAttribute("aria-label", "Карта активности за 26 недель: " + num(total) + " коммитов");
+  cells.setAttribute("aria-label", "Карта активности за 26 недель: " + num(days.reduce((s, d) => s + d.commits, 0)) + " коммитов");
   days.forEach((day, i) => {
     const cell = el("span", "heatmap-cell");
-    const level = day.commits === 0 ? 0 : Math.min(4, Math.ceil(day.commits / max * 4));
-    cell.dataset.level = String(level);
+    cell.dataset.level = String(day.commits === 0 ? 0 : Math.min(4, Math.ceil(day.commits / max * 4)));
     cell.style.setProperty("--i", String(i));
     cell.title = new Date(day.date + "T12:00:00").toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "short" }) +
-      " · " + num(day.commits) + " коммит(ов)";
+      " · " + num(day.commits);
     cells.append(cell);
   });
-  const labels = el("div", "heatmap-days");
-  labels.setAttribute("aria-hidden", "true");
-  for (const name of ["Пн", "", "Ср", "", "Пт", "", "Вс"]) labels.append(el("span", undefined, name));
   const legend = el("div", "heatmap-legend");
-  legend.append(el("span", undefined, "Меньше"));
+  legend.append(el("span", undefined, "меньше"));
   for (let level = 0; level <= 4; level++) {
     const swatch = el("span", "heatmap-cell");
     swatch.dataset.level = String(level);
     legend.append(swatch);
   }
-  legend.append(el("span", undefined, "Больше"));
-  const body = el("div", "heatmap-body");
-  body.append(labels, cells);
-  wrap.append(body, legend);
-  return wrap;
-}
-
-function bars(values: number[], labels: string[], label: string, hueFrom: number, hueTo: number): HTMLElement {
-  const chart = el("div", "bar-chart");
-  chart.setAttribute("role", "img");
-  const max = Math.max(1, ...values);
-  const peak = values.indexOf(Math.max(...values));
-  chart.setAttribute("aria-label", label + ". Пик: " + (labels[peak] ?? "") + " — " + num(values[peak]));
-  values.forEach((value, i) => {
-    const column = el("div", "bar" + (i === peak && value > 0 ? " peak" : ""));
-    column.style.setProperty("--h", (value / max * 100).toFixed(1) + "%");
-    column.style.setProperty("--hue", String(Math.round(hueFrom + (hueTo - hueFrom) * i / Math.max(1, values.length - 1))));
-    column.style.setProperty("--i", String(i));
-    column.title = labels[i] + ": " + num(value);
-    const fill = el("span", "bar-fill");
-    const caption = el("span", "bar-label", labels[i]);
-    column.append(fill, caption);
-    chart.append(column);
-  });
-  return chart;
-}
-
-function languageBar(languages: { extension: string; lines: number }[]): HTMLElement {
-  const wrap = el("div", "language-chart");
-  const top = languages.filter(l => l.lines > 0).slice(0, 8);
-  const rest = languages.slice(8).reduce((sum, l) => sum + l.lines, 0);
-  const items = rest > 0 ? [...top, { extension: "прочее", lines: rest }] : top;
-  const total = items.reduce((sum, l) => sum + l.lines, 0) || 1;
-  const bar = el("div", "language-bar");
-  bar.setAttribute("role", "img");
-  bar.setAttribute("aria-label", "Доли языков: " + items.map(l => l.extension + " " + Math.round(l.lines / total * 100) + "%").join(", "));
-  const legend = el("ul", "language-legend");
-  items.forEach((item, i) => {
-    const hue = LANGUAGE_HUES[item.extension] ?? HUES[(i + 3) % HUES.length]!;
-    const share = item.lines / total * 100;
-    const segment = el("span", "language-segment");
-    segment.style.setProperty("--w", share.toFixed(2) + "%");
-    segment.style.setProperty("--hue", String(hue));
-    segment.style.setProperty("--i", String(i));
-    segment.title = item.extension + " · " + num(item.lines) + " строк";
-    bar.append(segment);
-    const entry = el("li");
-    entry.style.setProperty("--hue", String(hue));
-    entry.append(el("span", "language-dot"), el("strong", undefined, item.extension),
-      el("span", "language-lines", num(item.lines)), el("span", "language-share", share.toFixed(1) + "%"));
-    legend.append(entry);
-  });
-  wrap.append(bar, legend);
+  legend.append(el("span", undefined, "больше"));
+  wrap.append(cells, legend);
   return wrap;
 }
 
 function donut(parts: { label: string; value: number; hue: number }[], centre: string, caption: string): HTMLElement {
   const wrap = el("div", "donut");
   const total = parts.reduce((sum, p) => sum + p.value, 0) || 1;
-  const svg = document.createElementNS(SVG, "svg");
-  svg.setAttribute("viewBox", "0 0 120 120");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", parts.map(p => p.label + " " + Math.round(p.value / total * 100) + "%").join(", "));
-  const r = 48, c = 2 * Math.PI * r;
-  const track = document.createElementNS(SVG, "circle");
-  track.setAttribute("class", "donut-track");
-  for (const [k, v] of [["cx", "60"], ["cy", "60"], ["r", String(r)]]) track.setAttribute(k!, v!);
-  svg.append(track);
+  const chart = svg("svg", { viewBox: "0 0 120 120", role: "img",
+    "aria-label": parts.map(p => p.label + " " + Math.round(p.value / total * 100) + "%").join(", ") });
+  chart.append(svg("circle", { cx: 60, cy: 60, r: 48, class: "donut-track", pathLength: 100 }));
   let offset = 0;
   parts.forEach((part, i) => {
-    const length = part.value / total * c;
-    const arc = document.createElementNS(SVG, "circle");
-    arc.setAttribute("class", "donut-arc");
-    for (const [k, v] of [["cx", "60"], ["cy", "60"], ["r", String(r)]]) arc.setAttribute(k!, v!);
+    const length = part.value / total * 100;
+    const arc = svg("circle", { cx: 60, cy: 60, r: 48, class: "donut-arc", pathLength: 100, "stroke-dashoffset": (-offset).toFixed(2) });
     arc.style.setProperty("--hue", String(part.hue));
-    arc.style.setProperty("--len", Math.max(0, length - 1.5).toFixed(2));
-    arc.style.setProperty("--circ", c.toFixed(2));
+    arc.style.setProperty("--len", Math.max(0, length - .6).toFixed(2));
     arc.style.setProperty("--i", String(i));
-    arc.setAttribute("stroke-dashoffset", (-offset).toFixed(2));
     offset += length;
-    svg.append(arc);
+    chart.append(arc);
   });
   const middle = el("div", "donut-centre");
   middle.append(el("strong", undefined, centre), el("span", undefined, caption));
   const figure = el("div", "donut-figure");
-  figure.append(svg, middle);
+  figure.append(chart, middle);
   const legend = el("ul", "donut-legend");
   for (const part of parts) {
     const item = el("li");
     item.style.setProperty("--hue", String(part.hue));
-    item.append(el("span", "language-dot"), el("span", undefined, part.label),
-      el("strong", undefined, num(part.value)), el("span", "language-share", (part.value / total * 100).toFixed(1) + "%"));
+    item.append(el("span", "dot"), el("span", undefined, part.label),
+      el("strong", undefined, num(part.value)), el("span", "share", (part.value / total * 100).toFixed(1) + "%"));
     legend.append(item);
   }
   wrap.append(figure, legend);
   return wrap;
 }
 
-function gauge(percent: number | null, label: string): HTMLElement {
+function gauge(percent: number | null, label: string, hint: string): HTMLElement {
   const wrap = el("div", "gauge" + (percent === null ? " is-empty" : ""));
-  const svg = document.createElementNS(SVG, "svg");
-  svg.setAttribute("viewBox", "0 0 120 72");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", label + ": " + (percent === null ? "нет данных" : percent + "%"));
-  const arcPath = "M10 64a50 50 0 0 1 100 0";
-  const track = document.createElementNS(SVG, "path");
-  track.setAttribute("d", arcPath); track.setAttribute("class", "gauge-track");
-  const fill = document.createElementNS(SVG, "path");
-  fill.setAttribute("d", arcPath); fill.setAttribute("class", "gauge-fill");
-  fill.setAttribute("pathLength", "100");
+  const chart = svg("svg", { viewBox: "0 0 120 70", role: "img", "aria-label": label + ": " + (percent === null ? "нет данных" : percent + "%") });
+  const arc = "M12 62a48 48 0 0 1 96 0";
+  chart.append(svg("path", { d: arc, class: "gauge-track", pathLength: 100 }));
+  const fill = svg("path", { d: arc, class: "gauge-fill", pathLength: 100 });
   fill.style.setProperty("--p", String(Math.max(0, Math.min(100, percent ?? 0))));
-  svg.append(track, fill);
+  chart.append(fill);
   const value = el("strong", "gauge-value");
   countUp(value, percent === null ? "—" : String(percent).replace(".", ",") + "%", 120);
-  wrap.append(svg, value, el("span", "gauge-label", label));
-  return wrap;
-}
-
-function wordsBalance(added: number, deleted: number, rewritten: number): HTMLElement {
-  const wrap = el("div", "balance");
-  const max = Math.max(1, added, deleted, rewritten);
-  const rows: [string, number, number, IconName][] = [
-    ["Родилось", added, 150, "sprout"], ["Исчезло", deleted, 356, "scissors"], ["Переписано", rewritten, 45, "pen"]
-  ];
-  rows.forEach(([name, value, hue, icon], i) => {
-    const row = el("div", "balance-row");
-    row.style.setProperty("--hue", String(hue));
-    row.style.setProperty("--w", (value / max * 100).toFixed(1) + "%");
-    row.style.setProperty("--i", String(i));
-    const track = el("span", "balance-track");
-    track.append(el("span", "balance-fill"));
-    const amount = el("strong");
-    countUp(amount, num(value), i * 90);
-    row.append(iconChip(icon, "balance-icon"), el("span", "balance-name", name), track, amount);
-    wrap.append(row);
-  });
+  const dial = el("div", "gauge-dial");
+  dial.append(chart, value);
+  const text = el("div", "gauge-text");
+  text.append(el("span", "gauge-label", label), el("small", undefined, hint));
+  wrap.append(dial, text);
   return wrap;
 }
 
@@ -327,107 +469,41 @@ function projectAge(first: string | null | undefined): string | null {
   if (!Number.isFinite(days)) return null;
   return days === 0 ? "Сегодня" : days + " " + plural(days, "день", "дня", "дней");
 }
+function chapter(icon: IconName, title: string, hue: number): HTMLElement {
+  const head = el("h4", "insight-chapter span-xl");
+  head.style.setProperty("--hue", String(hue));
+  head.append(iconChip(icon, "insight-chapter-icon"), el("span", undefined, title));
+  return head;
+}
+function spanned(node: HTMLElement, span: "s" | "m" | "l" | "xl"): HTMLElement {
+  node.classList.add("span-" + span);
+  return node;
+}
 
 export function mountProjectInsights(parent: HTMLElement): void {
   const root = el("section", "insights");
   root.setAttribute("aria-label", "Аналитика проекта");
 
   const hero = el("header", "insights-hero");
-  const heroIcon = iconChip("microscope", "insights-hero-icon");
   const heroText = el("div", "insights-hero-text");
-  const kicker = el("span", "insights-kicker", "Akariya Insights");
-  const title = el("h3", "insights-title", "Аналитика проекта");
   const status = el("p", "insights-status", "Собираю историю Git и измерения…");
   status.setAttribute("role", "status");
-  heroText.append(kicker, title, status);
+  heroText.append(el("span", "insights-kicker", "Akariya Insights"), el("h3", "insights-title", "Аналитика проекта"), status);
   const refresh = el("button", "insights-refresh");
   refresh.type = "button";
   refresh.append(createIcon("refresh"), el("span", undefined, "Пересчитать"));
-  hero.append(heroIcon, heroText, refresh);
+  hero.append(iconChip("microscope", "insights-hero-icon"), heroText, refresh);
 
   const kpis = el("div", "insights-kpis");
-  const tabs = el("div", "insights-tabs");
-  tabs.setAttribute("role", "tablist");
-  tabs.setAttribute("aria-label", "Разделы аналитики");
-  const indicator = el("span", "insights-tab-indicator");
-  indicator.setAttribute("aria-hidden", "true");
-  tabs.append(indicator);
-
-  const tabSpecs: { id: TabId; label: string; icon: IconName }[] = [
-    { id: "history", label: "История проекта", icon: "history" },
-    { id: "records", label: "Углублённая аналитика", icon: "sparkles" },
-    { id: "code", label: "Код под микроскопом", icon: "microscope" },
-    { id: "measure", label: "Измерения", icon: "gauge" }
-  ];
-  const panels = new Map<TabId, HTMLElement>();
-  const buttons = new Map<TabId, HTMLButtonElement>();
-  const tabKey = "akariya-insights-tab";
-  let active: TabId = "history";
-  try {
-    const saved = localStorage.getItem(tabKey);
-    if (tabSpecs.some(t => t.id === saved)) active = saved as TabId;
-  } catch { /* Storage unavailable */ }
-
-  const placeIndicator = (): void => {
-    const button = buttons.get(active);
-    if (!button || !button.offsetWidth) return;
-    indicator.style.setProperty("--x", button.offsetLeft + "px");
-    indicator.style.setProperty("--w", button.offsetWidth + "px");
-  };
-  const select = (id: TabId, focus = false): void => {
-    active = id;
-    for (const [key, button] of buttons) {
-      const on = key === id;
-      button.setAttribute("aria-selected", String(on));
-      button.tabIndex = on ? 0 : -1;
-      panels.get(key)!.hidden = !on;
-    }
-    if (focus) buttons.get(id)?.focus();
-    buttons.get(id)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: motion() ? "smooth" : "auto" });
-    placeIndicator();
-    try { localStorage.setItem(tabKey, id); } catch { /* Storage unavailable */ }
-  };
-  for (const spec of tabSpecs) {
-    const button = el("button", "insights-tab");
-    button.type = "button";
-    button.id = "insights-tab-" + spec.id;
-    button.setAttribute("role", "tab");
-    button.setAttribute("aria-controls", "insights-panel-" + spec.id);
-    button.append(createIcon(spec.icon), el("span", undefined, spec.label));
-    button.addEventListener("click", () => select(spec.id));
-    buttons.set(spec.id, button);
-    tabs.append(button);
-    const panel = el("div", "insights-panel");
-    panel.id = "insights-panel-" + spec.id;
-    panel.setAttribute("role", "tabpanel");
-    panel.setAttribute("aria-labelledby", button.id);
-    panels.set(spec.id, panel);
-  }
-  tabs.addEventListener("keydown", (event) => {
-    const order = tabSpecs.map(t => t.id);
-    const at = order.indexOf(active);
-    const next = event.key === "ArrowRight" ? order[(at + 1) % order.length]
-      : event.key === "ArrowLeft" ? order[(at - 1 + order.length) % order.length]
-      : event.key === "Home" ? order[0] : event.key === "End" ? order[order.length - 1] : undefined;
-    if (next) { event.preventDefault(); select(next, true); }
-  });
-  if (typeof ResizeObserver === "function") new ResizeObserver(placeIndicator).observe(tabs);
-
+  const board = el("div", "insights-board");
   const notes = el("details", "insights-notes");
   const notesSummary = el("summary");
   notesSummary.append(createIcon("info"), el("span", undefined, "Как считаются показатели"));
   const notesList = el("ul");
   notes.append(notesSummary, notesList);
-
-  root.append(hero, kpis, tabs, ...panels.values(), notes);
+  notes.hidden = true;
+  root.append(hero, kpis, board, notes);
   parent.append(root);
-  select(active);
-
-  const skeleton = (target: HTMLElement, count: number): void => {
-    const wrap = el("div", "insight-grid");
-    for (let i = 0; i < count; i++) wrap.append(el("div", "insight-skeleton"));
-    target.replaceChildren(wrap);
-  };
 
   let loading = false;
   const load = async (): Promise<void> => {
@@ -437,7 +513,7 @@ export function mountProjectInsights(parent: HTMLElement): void {
     root.classList.add("is-loading");
     status.textContent = "Собираю историю Git и измерения…";
     if (!kpis.childElementCount) for (let i = 0; i < 6; i++) kpis.append(el("div", "insight-skeleton kpi"));
-    for (const panel of panels.values()) if (!panel.childElementCount) skeleton(panel, 6);
+    if (!board.childElementCount) for (let i = 0; i < 4; i++) board.append(el("div", "insight-skeleton span-m"));
     const [historyResult, deepResult] = await Promise.allSettled([
       fetch("/api/updates/statistics", { cache: "no-store", signal: AbortSignal.timeout(60_000) })
         .then(r => { if (!r.ok) throw Error("HTTP " + r.status); return r.json() as Promise<HistoryStats>; }),
@@ -450,10 +526,7 @@ export function mountProjectInsights(parent: HTMLElement): void {
       r.status === "rejected" ? (r.reason instanceof Error ? r.reason.message : String(r.reason)) : "";
 
     renderKpis(history);
-    renderHistory(history, errorText(historyResult));
-    renderSection("records", deep, "history", errorText(deepResult));
-    renderCode(history, deep, errorText(deepResult));
-    renderMeasure(deep, errorText(deepResult));
+    board.replaceChildren(...renderBoard(history, deep, errorText(historyResult), errorText(deepResult)));
 
     notesList.replaceChildren();
     const caveats = [...(history?.reason ? [history.reason] : []), ...(deep?.caveats ?? [])];
@@ -462,142 +535,167 @@ export function mountProjectInsights(parent: HTMLElement): void {
 
     const at = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
     status.textContent = history || deep
-      ? "Обновлено в " + at + (history?.available === false ? " · история Git недоступна" : "")
+      ? "Обновлено в " + at + (history?.available === false ? " · история Git неполная" : "")
       : "Не удалось получить статистику: " + (errorText(historyResult) || errorText(deepResult));
     root.classList.remove("is-loading");
     refresh.disabled = false;
     loading = false;
-    placeIndicator();
   };
   refresh.addEventListener("click", () => { void load(); });
 
   function renderKpis(history: HistoryStats | null): void {
-    const items: { icon: IconName; label: string; value: string | null; hue: number }[] = [
-      { icon: "commit", label: "Коммитов", value: history?.commits != null ? num(history.commits) : null, hue: 356 },
-      { icon: "calendar", label: "Возраст проекта", value: projectAge(history?.firstCommitAt), hue: 28 },
-      { icon: "flame", label: "Активных дней", value: history?.activeDays != null ? num(history.activeDays) : null, hue: 45 },
-      { icon: "trending-up", label: "Лучшая серия", value: history?.longestStreak != null ? history.longestStreak + " " + plural(history.longestStreak, "день", "дня", "дней") : null, hue: 150 },
-      { icon: "code", label: "Строк кода", value: history ? num(history.languages.reduce((s, l) => s + l.lines, 0)) : null, hue: 214 },
-      { icon: "users", label: "Авторов", value: history?.authors != null ? num(history.authors) : null, hue: 262 }
+    const days = history?.activity ?? null;
+    const weeks = days?.length ? weeklyTotals(days) : null;
+    const activeWeeks = days?.length ? weeklyTotals(days.map(d => ({ date: d.date, commits: d.commits > 0 ? 1 : 0 }))) : null;
+    const recent = days?.length ? days.slice(-14).map(d => d.commits) : null;
+    const items: { icon: IconName; label: string; value: string | null; hue: number; visual?: Element }[] = [
+      { icon: "commit", label: "Коммиты", value: history?.commits != null ? num(history.commits) : null, hue: 356,
+        ...(weeks ? { visual: miniSpark(weeks.map(w => w.commits), 356) } : {}) },
+      { icon: "calendar", label: "Возраст", value: projectAge(history?.firstCommitAt), hue: 28 },
+      { icon: "flame", label: "Активные дни", value: history?.activeDays != null ? num(history.activeDays) : null, hue: 45,
+        ...(activeWeeks ? { visual: miniSpark(activeWeeks.map(w => w.commits), 45) } : {}) },
+      { icon: "trending-up", label: "Лучшая серия", value: history?.longestStreak != null ? history.longestStreak + " " + plural(history.longestStreak, "день", "дня", "дней") : null, hue: 150,
+        ...(recent ? { visual: miniSpark(recent, 150) } : {}) },
+      { icon: "code", label: "Строки кода", value: history ? num(history.languages.reduce((s, l) => s + l.lines, 0)) : null, hue: 214,
+        ...(history?.languages.length ? { visual: miniStack(history.languages.slice(0, 6).map((l, i) => ({ value: l.lines, hue: LANGUAGE_HUES[l.extension] ?? HUES[i]! }))) } : {}) },
+      { icon: "users", label: "Авторы", value: history?.authors != null ? num(history.authors) : null, hue: 262 }
     ];
     kpis.replaceChildren(...items.map((item, i) => {
-      const card = el("div", "insight-kpi" + (item.value === null ? " is-empty" : ""));
-      card.style.setProperty("--hue", String(item.hue));
+      const box = el("div", "insight-kpi" + (item.value === null ? " is-empty" : ""));
+      box.style.setProperty("--hue", String(item.hue));
+      const head = el("div", "insight-kpi-head");
+      head.append(iconChip(item.icon, "insight-kpi-icon"), el("span", "insight-kpi-label", item.label));
+      const body = el("div", "insight-kpi-body");
       const value = el("strong", "insight-kpi-value");
-      if (item.value === null) value.textContent = "—"; else countUp(value, item.value, i * 70);
-      card.append(iconChip(item.icon, "insight-kpi-icon"), value, el("span", "insight-kpi-label", item.label));
-      trackGlow(card);
-      reveal(card, i);
-      return card;
+      countUp(value, item.value ?? "—", i * 60);
+      body.append(value);
+      if (item.visual) body.append(item.visual);
+      box.append(head, body);
+      trackGlow(box);
+      reveal(box, i);
+      return box;
     }));
   }
 
-  function failure(panel: HTMLElement, message: string): void {
-    const box = el("div", "insight-error");
-    box.append(iconChip("alert", "insight-error-icon"), el("p", undefined, "Не удалось загрузить данные: " + (message || "нет ответа")));
-    panel.replaceChildren(box);
-  }
+  function renderBoard(history: HistoryStats | null, deep: DeepStats | null, historyError: string, deepError: string): HTMLElement[] {
+    const out: HTMLElement[] = [];
+    const failure = (message: string): HTMLElement => {
+      const box = el("div", "insight-error span-xl");
+      box.append(iconChip("alert", "insight-error-icon"), el("p", undefined, "Не удалось загрузить данные: " + (message || "нет ответа")));
+      return box;
+    };
+    const section = (id: string, index: number) => deep?.sections?.find(s => s.id === id) ?? deep?.sections?.[index];
+    const fromDeep = (m: DeepMetric): TileSpec => ({ icon: isIconName(m.icon) ? m.icon : "sparkles", label: m.label, value: m.value, detail: m.detail });
 
-  function renderHistory(data: HistoryStats | null, error: string): void {
-    const panel = panels.get("history")!;
-    if (!data) { failure(panel, error); return; }
-    const content: HTMLElement[] = [];
-    if (data.activity?.length) {
-      const total = data.activity.reduce((s, d) => s + d.commits, 0);
-      content.push(block("calendar", "Пульс разработки", num(total) + " коммитов за последние 26 недель", heatmap(data.activity)));
+    /* History */
+    out.push(chapter("history", "История проекта", 356));
+    if (!history) out.push(failure(historyError));
+    else {
+      if (history.activity?.length) {
+        const total = history.activity.reduce((s, d) => s + d.commits, 0);
+        out.push(card("chart", "Динамика коммитов", num(total) + " за 26 недель · по неделям", "l", weeklyChart(history.activity)));
+      }
+      if (history.hours?.length === 24) {
+        const peak = history.hours.indexOf(Math.max(...history.hours));
+        out.push(card(peak >= 6 && peak < 20 ? "sun" : "moon", "Часы активности", "Когда пишется код", "s", hourClock(history.hours)));
+      }
+      if (history.activity?.length) out.push(card("calendar", "Пульс разработки", "Каждая клетка — один день", "l", heatmap(history.activity)));
+      if (history.weekdays?.length === 7) {
+        const full = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"];
+        const peak = history.weekdays.indexOf(Math.max(...history.weekdays));
+        out.push(card("target", "Ритм недели", "Чаще всего — " + full[peak], "s",
+          columns(history.weekdays, ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"], "Коммиты по дням недели", 356, 262)));
+      }
+      if (history.wordsAdded !== null && history.wordsDeleted !== null && history.wordsRewritten !== null)
+        out.push(card("pen", "Слова в истории", "Git word-diff по всем коммитам", "m", hbars([
+          { label: "Родилось", value: history.wordsAdded, hue: 150, icon: "sprout" },
+          { label: "Исчезло", value: history.wordsDeleted, hue: 356, icon: "scissors" },
+          { label: "Переписано", value: history.wordsRewritten, hue: 45, icon: "pen" }
+        ], "Слова в истории")));
+      const shortDay = (iso: string | null | undefined): string | null => iso
+        ? new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" }).replace(/\s?г\.$/u, "")
+        : null;
+      out.push(spanned(tileGrid([
+        { icon: "rocket", label: "Первый коммит", value: shortDay(history.firstCommitAt), detail: "Начало истории" },
+        { icon: "clock", label: "Последний коммит", value: shortDay(history.lastCommitAt), detail: "Свежее изменение" },
+        ...withShares([
+          { icon: "file-plus", label: "Новые файлы", value: history.newFiles === null ? null : num(history.newFiles), detail: "Добавления в Git" },
+          { icon: "file-x", label: "Удалённые файлы", value: history.deletedFiles === null ? null : num(history.deletedFiles), detail: "Удаления в Git" }
+        ]),
+        { icon: "flame", label: "Горячий файл", value: history.hottestFile ? num(history.hottestFile.commits) + " правок" : null, path: history.hottestFile?.path },
+        { icon: "trending-up", label: "Самый выросший", value: history.biggestGrowth ? num(history.biggestGrowth.netLines) + " строк" : null, path: history.biggestGrowth?.path },
+        { icon: "fossil", label: "Старожил", value: history.oldestUntouchedFile ? new Date(history.oldestUntouchedFile.lastChanged).toLocaleDateString("ru-RU") : null, path: history.oldestUntouchedFile?.path }
+      ]), "xl"));
     }
-    const rhythm: HTMLElement[] = [];
-    if (data.hours?.length === 24) {
-      const hourLabels = data.hours.map((_, h) => h % 3 === 0 ? String(h) : "");
-      const chart = bars(data.hours, hourLabels, "Коммиты по часам суток", 230, 20);
-      chart.querySelectorAll<HTMLElement>(".bar").forEach((b, h) => { b.title = h + ":00 — " + num(data.hours![h]) + " коммитов"; });
-      const peak = data.hours.indexOf(Math.max(...data.hours));
-      rhythm.push(block(peak >= 6 && peak < 20 ? "sun" : "moon", "Ритм суток", "Пик продуктивности — около " + peak + ":00", chart));
+
+    /* Code */
+    out.push(chapter("microscope", "Код под микроскопом", 214));
+    if (!history && !deep) out.push(failure(historyError || deepError));
+    if (history?.languages.length) {
+      const top = history.languages.filter(l => l.lines > 0).slice(0, 7);
+      const rest = history.languages.slice(7).reduce((s, l) => s + l.lines, 0);
+      const rows = [...top, ...(rest ? [{ extension: "прочее", lines: rest }] : [])]
+        .map((l, i) => ({ label: l.extension, value: l.lines, hue: LANGUAGE_HUES[l.extension] ?? HUES[(i + 3) % HUES.length]!, mono: true }));
+      out.push(card("palette", "Языки", "Строки по расширениям", "m",
+        miniStack(rows.map(r => ({ value: r.value, hue: r.hue }))), hbars(rows, "Языки проекта")));
     }
-    if (data.weekdays?.length === 7) {
-      const names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-      const full = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"];
-      const peak = data.weekdays.indexOf(Math.max(...data.weekdays));
-      rhythm.push(block("target", "Ритм недели", "Самый активный день — " + full[peak], bars(data.weekdays, names, "Коммиты по дням недели", 356, 290)));
-    }
-    if (rhythm.length) { const pair = el("div", "insight-pair"); pair.append(...rhythm); content.push(pair); }
-    if (data.wordsAdded !== null && data.wordsDeleted !== null && data.wordsRewritten !== null)
-      content.push(block("pen", "Слова в истории", "Git word-diff по всем доступным коммитам", wordsBalance(data.wordsAdded, data.wordsDeleted, data.wordsRewritten)));
-    const day = (iso: string | null | undefined): string | null => iso
-      ? new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" }).replace(/\s?г\.$/u, "")
-      : null;
-    const first = day(data.firstCommitAt), last = day(data.lastCommitAt);
-    content.push(block("history", "Хроника файлов", "Рождения, потери и рекорды", grid([
-      tile({ icon: "rocket", label: "Первый коммит", value: first, detail: "Начало истории проекта" }, 0),
-      tile({ icon: "clock", label: "Последний коммит", value: last, detail: "Самое свежее изменение" }, 1),
-      tile({ icon: "file-plus", label: "Новорождённые файлы", value: data.newFiles === null ? null : num(data.newFiles), detail: "Git-события добавления файлов" }, 2),
-      tile({ icon: "file-x", label: "Кладбище файлов", value: data.deletedFiles === null ? null : num(data.deletedFiles), detail: "Git-события удаления файлов" }, 3),
-      tile({ icon: "flame", label: "Горячий файл", value: data.hottestFile ? num(data.hottestFile.commits) + " изменений" : null, path: data.hottestFile?.path }, 4),
-      tile({ icon: "trending-up", label: "Самый выросший", value: data.biggestGrowth ? num(data.biggestGrowth.netLines) + " строк" : null, path: data.biggestGrowth?.path }, 5),
-      tile({ icon: "fossil", label: "Старожил проекта", value: data.oldestUntouchedFile ? new Date(data.oldestUntouchedFile.lastChanged).toLocaleDateString("ru-RU") : null, path: data.oldestUntouchedFile?.path, detail: "Дольше всех без изменений" }, 6)
-    ])));
-    panel.replaceChildren(...content);
-  }
-
-  function deepTiles(section: { metrics: DeepMetric[] } | undefined, offset = 0): HTMLElement[] {
-    return (section?.metrics ?? []).map((m, i) => tile({
-      icon: isIconName(m.icon) ? m.icon : "sparkles",
-      label: m.label.replace(/^\P{L}+/u, ""),
-      value: m.value, detail: m.detail
-    }, i + offset));
-  }
-  const findSection = (deep: DeepStats | null, id: string, index: number) =>
-    deep?.sections?.find(s => s.id === id) ?? deep?.sections?.[index];
-
-  function renderSection(tab: TabId, deep: DeepStats | null, id: string, error: string): void {
-    const panel = panels.get(tab)!;
-    if (!deep) { failure(panel, error); return; }
-    const section = findSection(deep, id, 0);
-    panel.replaceChildren(block("crown", "Рекорды и редкости", "Самые яркие факты из истории и исходников", grid(deepTiles(section))));
-  }
-
-  function renderCode(history: HistoryStats | null, deep: DeepStats | null, error: string): void {
-    const panel = panels.get("code")!;
-    if (!history && !deep) { failure(panel, error); return; }
-    const content: HTMLElement[] = [];
-    const visuals: HTMLElement[] = [];
-    if (history?.languages.length)
-      visuals.push(block("palette", "Языки проекта", "Строки по расширениям в текущем коде", languageBar(history.languages)));
     const mix = deep?.composition;
     if (mix && mix.lines > 0)
-      visuals.push(block("layers", "Состав строк", num(mix.files) + " исходных файлов", donut([
+      out.push(card("layers", "Состав строк", num(mix.files) + " исходных файлов", "m", donut([
         { label: "Код", value: mix.code, hue: 214 },
         { label: "Комментарии", value: mix.comments, hue: 45 },
         { label: "Пустые", value: mix.blank, hue: 262 }
-      ], num(mix.lines), "строк")));
-    if (visuals.length) { const pair = el("div", "insight-pair"); pair.append(...visuals); content.push(pair); }
-    if (deep) content.push(block("microscope", "Конструкции кода", "Эвристический подсчёт по исходникам", grid(deepTiles(findSection(deep, "code", 1)))));
-    if (history) content.push(block("ruler", "Размеры и структура", "Текущие файлы, отслеживаемые Git", grid([
-      tile({ icon: "dumbbell", label: "Файл-гигант", value: history.largestFile ? num(history.largestFile.lines) + " строк" : null, path: history.largestFile?.path }, 0),
-      tile({ icon: "minimize", label: "Самый маленький", value: history.smallestCodeFile ? num(history.smallestCodeFile.lines) + " строк" : null, path: history.smallestCodeFile?.path }, 1),
-      tile({ icon: "chart", label: "Средний файл", value: history.averageCodeLines === null ? null : num(history.averageCodeLines) + " строк", detail: "Медиана: " + num(history.medianCodeLines) + " строк" }, 2),
-      tile({ icon: "folder", label: "Папки", value: num(history.directories), detail: num(history.averageFilesPerDirectory) + " файлов на каталог в среднем" }, 3),
-      tile({ icon: "book", label: "Документация", value: num(history.markdownLines) + " строк", detail: "Текущие файлы .md" }, 4),
-      tile({ icon: "database", label: "Данные JSON", value: num(history.jsonFiles) + " файлов", detail: num(history.jsonBytes) + " байт" }, 5)
-    ])));
-    panel.replaceChildren(...content);
-  }
+      ], compact.format(mix.lines), "строк")));
+    const codeMetrics = section("code", 1)?.metrics ?? [];
+    const constructs = codeMetrics
+      .map(m => ({ m, n: m.value && percentIn(m.value) === null ? animatableNumber(m.value)?.target ?? null : null }))
+      .filter((x): x is { m: DeepMetric; n: number } => x.n !== null)
+      .sort((a, b) => b.n - a.n);
+    if (constructs.length)
+      out.push(card("function", "Конструкции кода", "Эвристика по исходникам, без AST", "m", hbars(constructs.map((x, i) => ({
+        label: x.m.label, value: x.n, hue: HUES[(i + 5) % HUES.length]!, ...(isIconName(x.m.icon) ? { icon: x.m.icon } : {})
+      })), "Конструкции кода")));
+    if (history?.largestFile)
+      out.push(card("ruler", "Размеры файлов", "Строк в файле", "m", hbars([
+        { label: "Максимум", value: history.largestFile.lines, hue: 356, icon: "dumbbell" },
+        { label: "Среднее", value: Math.round(history.averageCodeLines ?? 0), hue: 45, icon: "chart" },
+        { label: "Медиана", value: Math.round(history.medianCodeLines ?? 0), hue: 150, icon: "ruler" },
+        { label: "Минимум", value: history.smallestCodeFile?.lines ?? 0, hue: 214, icon: "minimize" }
+      ], "Размеры файлов")));
+    const codeTiles: TileSpec[] = codeMetrics.filter(m => m.value !== null && percentIn(m.value) !== null).map(fromDeep);
+    if (history) codeTiles.push(
+      { icon: "folder", label: "Папки", value: num(history.directories), detail: num(history.averageFilesPerDirectory) + " файлов на папку" },
+      { icon: "book", label: "Документация", value: num(history.markdownLines) + " строк", detail: "Файлы .md" },
+      { icon: "database", label: "JSON", value: num(history.jsonFiles) + " файлов", detail: compact.format(history.jsonBytes) + " байт" }
+    );
+    if (codeTiles.length) out.push(spanned(tileGrid(codeTiles), "xl"));
 
-  function renderMeasure(deep: DeepStats | null, error: string): void {
-    const panel = panels.get("measure")!;
-    if (!deep) { failure(panel, error); return; }
-    const section = findSection(deep, "updater", 2);
-    const measured = (section?.metrics ?? []).filter(m => m.value !== null).length;
-    const total = section?.metrics.length ?? 0;
-    const gauges = el("div", "gauge-row");
-    gauges.append(
-      gauge(typeof deep.successRate === "number" ? deep.successRate : null, "Успешность обновлений"),
-      gauge(total ? Math.round(measured / total * 100) : null, "Покрытие измерениями")
-    );
-    panel.replaceChildren(
-      block("gauge", "Здоровье обновлений", measured + " из " + total + " показателей измерено на этой машине", gauges),
-      block("radar", "Измерения updater", "Телеметрия последних установок и откатов", grid(deepTiles(section)))
-    );
+    /* Records */
+    out.push(chapter("crown", "Рекорды и редкости", 45));
+    if (!deep) out.push(failure(deepError));
+    else {
+      const metrics = section("history", 0)?.metrics ?? [];
+      out.push(spanned(tileGrid(withShares(metrics.filter(m => m.value !== null).map(fromDeep))), "xl"));
+      const rest = pending(metrics.filter(m => m.value === null));
+      if (rest) out.push(spanned(rest, "xl"));
+    }
+
+    /* Measurements */
+    out.push(chapter("gauge", "Измерения обновлений", 150));
+    if (deep) {
+      const metrics = section("updater", 2)?.metrics ?? [];
+      const measured = metrics.filter(m => m.value !== null);
+      const gauges = el("div", "gauge-row");
+      gauges.append(
+        gauge(typeof deep.successRate === "number" ? deep.successRate : null, "Успешность", "confirmed / prepared"),
+        gauge(metrics.length ? Math.round(measured.length / metrics.length * 100) : null, "Покрытие", measured.length + " из " + metrics.length + " измерено")
+      );
+      out.push(card("lifebuoy", "Здоровье обновлений", "По локальному журналу updater", "m", gauges));
+      if (measured.length) out.push(spanned(tileGrid(measured.map(fromDeep)), "m"));
+      const rest = pending(metrics.filter(m => m.value === null));
+      if (rest) out.push(spanned(rest, "xl"));
+    }
+    return out;
   }
 
   void load();
