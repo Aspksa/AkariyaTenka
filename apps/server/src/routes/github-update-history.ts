@@ -15,7 +15,7 @@ export async function githubUpdateHistory(root: string): Promise<{
   }
   if (!info.isFile() || info.isSymbolicLink() || info.size > 2 * 1024 * 1024)
     throw new Error("Update history file is unsafe or too large");
-  const lines = (await readFile(file, "utf8")).trim().split("\n").slice(-40);
+  const lines = (await readFile(file, "utf8")).trim().split("\n").slice(-200);
   const events: { at: string; event: string; revision: string | null }[] = [];
   for (const line of lines) {
     let value: unknown;
