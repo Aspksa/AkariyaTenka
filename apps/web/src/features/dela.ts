@@ -35,6 +35,15 @@ export function mountDela(host:HTMLElement):void{
  let tasks:Task[]=[];
  try{tasks=parseTasks(JSON.parse(localStorage.getItem(KEY)??"[]"));}catch{/* unavailable storage */}
  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(tasks));return true;}catch{return false;}};
+ let writes:Promise<void>=Promise.resolve();
+ const send=(payload:unknown):void=>{
+  writes=writes.then(async()=>{
+   const r=await fetch("/api/dela",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+   if(!r.ok)throw Error("HTTP "+r.status);
+  }).catch(()=>{message.textContent="Не удалось сохранить на сервере; браузерная копия сохранена.";});
+ };
+ const upsert=(task:Task)=>{save();send({action:"upsert",task:{...task,repeat:task.repeat??"none",subtasks:task.subtasks??[]}});};
+ const deleteServer=(id:string)=>{save();send({action:"delete",id});};
  const root=node("section","dela");
  const head=node("div","dela-head");
  const intro=node("div");intro.append(node("h3","","Дела"),node("p","","Задачи, планы и выполненная работа"));
