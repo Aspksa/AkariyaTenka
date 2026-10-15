@@ -15,6 +15,7 @@ import { createHealthRoute } from "./routes/health.js";
 import { createPerformanceRoute } from "./routes/performance.js";
 import { createGithubUpdateRoute } from "./routes/github-updates.js";
 import { ProjectStats, recordStartup } from "./services/project-stats.js";
+import { DelaStore } from "./services/dela-store.js";
 import { MEMORY_LIST_CAP, updaterFigures } from "./services/updater-figures.js";
 import { createGithubUpdateHistoryRoute } from "./routes/github-update-history.js";
 import { createGithubUpdateRequest } from "./routes/github-update-request.js";
@@ -31,6 +32,8 @@ async function main(): Promise<void> {
   const storage = await createStorage(config);
   const security = createSecurity(storage.audit, clock, process.env);
   const assistant = createAssistant(security.policy, security.approvals, storage.audit, clock, storage.assistant);
+  const dela=new DelaStore(config.dataDir);
+  await dela.init();
   const brain = new LocalBrainSettings(config.dataDir);
   let brainConfig = await brain.readSettings();
   let localKey = await brain.readKey();
@@ -76,6 +79,9 @@ async function main(): Promise<void> {
     config,
     {
       health: createHealthRoute(health),
+      delaList: async()=>JSON.stringify({tasks:await dela.list()}),
+      delaChange: async payload=>JSON.stringify({tasks:await dela.change(payload)}),
+      delaDue: async today=>JSON.stringify({events:await dela.dueNotifications(today)}),
       assistantStatus: async () => JSON.stringify({
         configured:Boolean(cloudKey() || (process.env.AKARIYA_AI_API_KEY && process.env.AKARIYA_AI_MODEL)),
         keyStored:Boolean(localKey), provider:cloudKey()?"Cloud.ru":"OpenAI-compatible",
