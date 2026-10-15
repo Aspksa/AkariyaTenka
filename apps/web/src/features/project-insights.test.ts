@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { animatableNumber } from "./project-insights.js";
+import { animatableNumber, percentIn, weeklyTotals } from "./project-insights.js";
 
 describe("insight number animation", () => {
  it("animates plain and grouped integers with their suffix", () => {
@@ -15,5 +15,15 @@ describe("insight number animation", () => {
   expect(animatableNumber("05.01.2026")).toBeNull();
   expect(animatableNumber("a1b2c3 — 12 файлов")).toBeNull();
   expect(animatableNumber("Нет данных")).toBeNull();
+ });
+ it("extracts the first percentage for mini rings", () => {
+  expect(percentIn("108 строк (0.9%)")).toBe(0.9);
+  expect(percentIn("92,5%")).toBe(92.5);
+  expect(percentIn("1 234 строк")).toBeNull();
+  expect(percentIn("140%")).toBeNull();
+ });
+ it("sums a Monday-aligned daily series into weeks", () => {
+  const days = Array.from({ length: 10 }, (_, i) => ({ date: "2026-01-" + String(5 + i).padStart(2, "0"), commits: i }));
+  expect(weeklyTotals(days)).toEqual([{ start: "2026-01-05", commits: 21 }, { start: "2026-01-12", commits: 24 }]);
  });
 });
