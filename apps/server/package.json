@@ -10,6 +10,6 @@
     "@akariya/core":"*",
     "@akariya/persistence":"*",
     "@akariya/security":"*",
-    "zod":"^4.6.5"
+    "zod":"^4.6.7"
   }
 }
